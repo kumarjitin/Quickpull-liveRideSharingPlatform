@@ -1,0 +1,3856 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>QuickPull · Dashboard</title>
+
+    <!-- Anti-flash appearance initialization (apple-design skill §14) -->
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('quickpull_theme') || localStorage.getItem('admin_theme') || localStorage.getItem('theme');
+                var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                var theme = saved || (prefersDark ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-theme', theme);
+                document.documentElement.classList.toggle('dark', theme === 'dark');
+            } catch (e) { }
+        })();
+    </script>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <link rel="stylesheet" href="./apple-design.css" />
+    <script src="./quickpull-theme.js"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "secondary": "#00d26a",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#111a22",
+                        "surface-dark": "#192633",
+                        "surface-darker": "#233648"
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Noto Sans", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+        }
+
+        input,
+        textarea,
+        select,
+        button {
+            -webkit-user-select: text;
+        }
+
+        html {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #111a22;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #233648;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #137fec;
+        }
+
+        #dashboardMap {
+            height: 100%;
+            border-radius: 8px;
+        }
+
+        .loading-spinner {
+            border: 3px solid rgba(19, 127, 236, 0.1);
+            border-top: 3px solid #137fec;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .ride-card {
+            transition: all 0.3s ease;
+        }
+
+        .ride-card:hover {
+            transform: translateY(-4px);
+            border-color: #137fec;
+        }
+
+        .profile-dropdown {
+            z-index: 9999 !important;
+            position: fixed !important;
+        }
+
+        .map-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .map-modal.active {
+            display: flex;
+        }
+
+        .map-modal-content {
+            background: #192633;
+            border-radius: 1rem;
+            padding: 16px;
+            width: 94%;
+            max-width: 600px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #233648;
+            overflow-y: auto;
+        }
+
+        #pickerMap {
+            height: 320px;
+            min-height: 240px;
+            border-radius: 1rem;
+            flex: 1;
+        }
+
+        [data-theme="light"] .map-modal-content {
+            background: #ffffff !important;
+            border-color: rgba(0, 0, 0, 0.12) !important;
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] .map-modal-content h3 {
+            color: #1d1d1f !important;
+        }
+
+        /* FORCE MAP BEHIND ALL UI  (May cause underlaping)*/
+        .leaflet-container,
+        .leaflet-pane,
+        .leaflet-map-pane,
+        .leaflet-tile-pane,
+        .leaflet-overlay-pane,
+        .leaflet-shadow-pane,
+        .leaflet-marker-pane,
+        .leaflet-popup-pane {
+            z-index: 0 !important;
+        }
+
+        /* Mobile layout & map toggle */
+        @media (max-width: 768px) {
+            header#dashNav {
+                padding: 6px 12px !important;
+                gap: 4px !important;
+            }
+
+            header#dashNav>div:first-child {
+                gap: 6px !important;
+                flex-shrink: 0;
+            }
+
+            header#dashNav>div:nth-child(2) {
+                display: none !important;
+            }
+
+            header#dashNav>div:last-child {
+                gap: 6px !important;
+                flex-shrink: 0;
+            }
+
+            #mapContainer {
+                display: none;
+                width: 100% !important;
+                height: 100% !important;
+                flex: 1;
+                position: relative !important;
+            }
+
+            #mapContainer.show {
+                display: flex !important;
+                flex-direction: column;
+                width: 100% !important;
+                height: 100% !important;
+            }
+
+            #sidebarContainer {
+                display: flex;
+                width: 100% !important;
+                height: 100% !important;
+                flex: 1;
+                overflow-y: auto;
+            }
+
+            #sidebarContainer.hide-on-mobile {
+                display: none !important;
+            }
+
+            #toggleMapBtn {
+                display: inline-flex !important;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #notificationContainer {
+                top: auto !important;
+                bottom: 24px !important;
+                left: 16px !important;
+                right: 16px !important;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                pointer-events: none;
+            }
+
+            #notificationContainer>* {
+                pointer-events: auto;
+                width: 100% !important;
+                max-width: 360px !important;
+            }
+        }
+
+        @media (min-width: 769px) {
+            #toggleMapBtn {
+                display: none !important;
+            }
+
+            #mapContainer {
+                display: block !important;
+            }
+
+            #sidebarContainer {
+                display: flex !important;
+            }
+        }
+
+        /* ═══ Enhanced Navbar ═══ */
+        #dashNav {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+        }
+
+        #dashNav.scrolled {
+            background: rgba(0, 0, 0, 0.8) !important;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+            border-color: rgba(255, 255, 255, 0.06) !important;
+        }
+
+        #dashNav .dash-nav-link {
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #dashNav .dash-nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: #137fec;
+            border-radius: 2px;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #dashNav .dash-nav-link:hover::after {
+            width: 55%;
+        }
+
+        #dashNav .dash-nav-link:hover {
+            color: #fff !important;
+            background: rgba(19, 127, 236, 0.1) !important;
+        }
+
+        /* ═══ Skeleton Loading ═══ */
+        @keyframes shimmerDash {
+            0% {
+                background-position: -400px 0;
+            }
+
+            100% {
+                background-position: 400px 0;
+            }
+        }
+
+        .skeleton-shimmer {
+            background: linear-gradient(90deg, #192633 25%, #253545 50%, #192633 75%);
+            background-size: 400px 100%;
+            animation: shimmerDash 1.4s ease infinite;
+            border-radius: 8px;
+        }
+
+        .skeleton-card {
+            background: linear-gradient(135deg, #192633 0%, #151f2a 100%);
+            border: 1px solid #233648;
+            border-radius: 16px;
+            padding: 16px;
+        }
+
+        #mapSkeleton {
+            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                filter 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+            transform: scale(1);
+            filter: blur(0px);
+        }
+
+        #mapSkeleton.fade-out {
+            opacity: 0;
+            transform: scale(1.02);
+            filter: blur(8px);
+            pointer-events: none;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           APPLE HIG THEME & MATERIAL OVERRIDES (apple-design skill)
+           ═══════════════════════════════════════════════════════════════════ */
+        body {
+            background-color: var(--canvas) !important;
+            color: var(--text) !important;
+            font-family: var(--font-system) !important;
+            transition: background-color 0.25s var(--ease-spring), color 0.25s var(--ease-spring);
+        }
+
+        #dashNav {
+            background: var(--surface-topbar) !important;
+            backdrop-filter: blur(24px) saturate(180%) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+            border: 1px solid var(--border) !important;
+            border-top: 1px solid var(--border-specular) !important;
+            box-shadow: var(--shadow-topbar) !important;
+        }
+
+        #sidebarContainer {
+            background: var(--surface-sidebar) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border-right: 1px solid var(--border) !important;
+            transition: background-color 0.25s var(--ease-spring), border-color 0.25s var(--ease-spring);
+        }
+
+        /* Inputs & Search Boxes */
+        #pickupInput,
+        #destinationInput,
+        #customLat,
+        #customLng,
+        .bg-\[\#192633\] {
+            background-color: var(--surface-recessed) !important;
+            border-color: var(--border) !important;
+            color: var(--text) !important;
+            transition: all 0.22s var(--ease-spring);
+        }
+
+        #pickupInput:focus,
+        #destinationInput:focus {
+            background-color: var(--surface-card) !important;
+            border-color: var(--border-focus) !important;
+            box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15) !important;
+        }
+
+        /* Text colors */
+        .text-\[\#92adc9\] {
+            color: var(--text-dim) !important;
+        }
+
+        .text-\[\#5a6b7c\] {
+            color: var(--text-dim) !important;
+        }
+
+        .border-\[\#233648\] {
+            border-color: var(--border) !important;
+        }
+
+        /* Cards & Ride Containers */
+        .ride-card {
+            background: var(--surface-card) !important;
+            border: 1px solid var(--border) !important;
+            border-top: 1px solid var(--border-specular) !important;
+            box-shadow: var(--shadow-card), var(--shadow-specular) !important;
+            border-radius: 16px !important;
+            transition: all 0.22s var(--ease-spring) !important;
+        }
+
+        .ride-card:hover {
+            transform: translateY(-2px) !important;
+            background: var(--surface-card-hover) !important;
+            box-shadow: var(--shadow-card-hover) !important;
+            border-color: var(--border-hi) !important;
+        }
+
+        /* Modals & Dropdowns */
+        .map-modal-content,
+        .profile-dropdown,
+        .modal-content,
+        div[id$="Modal"]>div,
+        div[id$="Drawer"] {
+            background: var(--surface-modal) !important;
+            border: 1px solid var(--border) !important;
+            border-top: 1px solid var(--border-specular) !important;
+            color: var(--text) !important;
+            box-shadow: var(--shadow-modal) !important;
+        }
+
+        .profile-dropdown a,
+        .profile-dropdown button {
+            color: var(--text-secondary) !important;
+            transition: all 0.18s ease !important;
+        }
+
+        .profile-dropdown a:hover,
+        .profile-dropdown button:hover {
+            color: var(--text) !important;
+            background: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .profile-dropdown button[onclick*="logout"] {
+            color: #f87171 !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .profile-dropdown button[onclick*="logout"]:hover {
+            color: #fca5a5 !important;
+            background: rgba(239, 68, 68, 0.16) !important;
+        }
+
+        /* Map UI buttons */
+        .size-10,
+        #toggleMapBtn,
+        #closeMapBtn {
+            background: var(--surface-modal) !important;
+            border: 1px solid var(--border) !important;
+            color: var(--text) !important;
+            box-shadow: var(--shadow-card) !important;
+        }
+
+        .size-10:hover,
+        #toggleMapBtn:hover,
+        #closeMapBtn:hover {
+            background: var(--surface-card-hover) !important;
+        }
+
+        /* Light Mode Specific Overrides */
+        [data-theme="light"] body {
+            background-color: #f5f5f7 !important;
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #sidebarContainer {
+            background: rgba(255, 255, 255, 0.88) !important;
+            border-right-color: rgba(0, 0, 0, 0.08) !important;
+        }
+
+        [data-theme="light"] #dashNav {
+            background: rgba(255, 255, 255, 0.85) !important;
+            border-color: rgba(0, 0, 0, 0.08) !important;
+            border-top-color: rgba(255, 255, 255, 0.95) !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        [data-theme="light"] #dashNav h2 {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #dashNav .dash-nav-link {
+            color: #48484a !important;
+        }
+
+        [data-theme="light"] #dashNav .dash-nav-link:hover {
+            color: #0071e3 !important;
+            background: rgba(0, 113, 227, 0.08) !important;
+        }
+
+        [data-theme="light"] #dashNav button:not(.theme-seg-btn) {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #dashNav button:not(.theme-seg-btn):hover {
+            background: rgba(0, 0, 0, 0.05) !important;
+        }
+
+        [data-theme="light"] #pickupInput,
+        [data-theme="light"] #destinationInput,
+        [data-theme="light"] #customLat,
+        [data-theme="light"] #customLng,
+        [data-theme="light"] .bg-\[\#192633\] {
+            background-color: rgba(240, 241, 245, 0.95) !important;
+            border-color: rgba(0, 0, 0, 0.08) !important;
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #pickupInput::placeholder,
+        [data-theme="light"] #destinationInput::placeholder {
+            color: #8e8e93 !important;
+        }
+
+        [data-theme="light"] .ride-card {
+            background: rgba(255, 255, 255, 0.92) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.9) !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05) !important;
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] .ride-card:hover {
+            background: #ffffff !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+            border-color: rgba(0, 113, 227, 0.3) !important;
+        }
+
+        [data-theme="light"] .ride-card h4,
+        [data-theme="light"] .ride-card .text-white,
+        [data-theme="light"] .ride-card span.text-white {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #sidebarContainer h2,
+        [data-theme="light"] #sidebarContainer h3,
+        [data-theme="light"] #sidebarContainer h4,
+        [data-theme="light"] #sidebarContainer .text-white,
+        [data-theme="light"] #sidebarContainer span.text-white {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #sidebarContainer p,
+        [data-theme="light"] #sidebarContainer .text-gray-400,
+        [data-theme="light"] #sidebarContainer .text-gray-300 {
+            color: #6e6e73 !important;
+        }
+
+        [data-theme="light"] #sidebarContainer .text-\[\#92adc9\],
+        [data-theme="light"] #sidebarContainer .text-\[\#5a6b7c\] {
+            color: #8e8e93 !important;
+        }
+
+        [data-theme="light"] .profile-dropdown,
+        [data-theme="light"] .map-modal-content,
+        [data-theme="light"] div[id$="Modal"]>div {
+            background: rgba(255, 255, 255, 0.98) !important;
+            border-color: rgba(0, 0, 0, 0.08) !important;
+            color: #1d1d1f !important;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        [data-theme="light"] .profile-dropdown p {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] .profile-dropdown #profileEmail {
+            color: #6e6e73 !important;
+        }
+
+        [data-theme="light"] .profile-dropdown a,
+        [data-theme="light"] .profile-dropdown button {
+            color: #3a3a3c !important;
+        }
+
+        [data-theme="light"] .profile-dropdown a:hover,
+        [data-theme="light"] .profile-dropdown button:hover {
+            color: #0071e3 !important;
+            background: rgba(0, 113, 227, 0.08) !important;
+        }
+
+        [data-theme="light"] .profile-dropdown button[onclick*="logout"] {
+            color: #dc2626 !important;
+            border-top-color: rgba(0, 0, 0, 0.06) !important;
+        }
+
+        [data-theme="light"] .profile-dropdown button[onclick*="logout"]:hover {
+            color: #b91c1c !important;
+            background: rgba(220, 38, 38, 0.08) !important;
+        }
+
+        [data-theme="light"] .size-10,
+        [data-theme="light"] #closeMapBtn {
+            background: rgba(255, 255, 255, 0.92) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            color: #1d1d1f !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        [data-theme="light"] .size-10:hover,
+        [data-theme="light"] #closeMapBtn:hover {
+            background: #ffffff !important;
+        }
+
+        [data-theme="light"] #availableRidesTabBtn:not(.bg-primary) {
+            background: rgba(0, 0, 0, 0.05) !important;
+            color: #48484a !important;
+        }
+
+        /* Map Container, Skeleton, Legend & Controls Theme Overrides */
+        #mapContainer {
+            background-color: var(--map-bg) !important;
+            transition: background-color 0.25s var(--ease-spring);
+        }
+
+        #dashboardMap {
+            background-color: var(--map-bg) !important;
+        }
+
+        /* Light Mode Map Elements */
+        [data-theme="light"] #mapContainer {
+            background-color: #e8ecf1 !important;
+        }
+
+        [data-theme="light"] #mapSkeleton {
+            background-color: #e8ecf1 !important;
+        }
+
+        [data-theme="light"] #mapSkeleton .skeleton-shimmer {
+            background: linear-gradient(90deg, #d8dee8 25%, #edf0f5 50%, #d8dee8 75%) !important;
+            background-size: 400px 100% !important;
+        }
+
+        [data-theme="light"] #mapSkeleton .border-3 {
+            border-color: rgba(0, 0, 0, 0.12) !important;
+            border-top-color: #0071e3 !important;
+        }
+
+        [data-theme="light"] #mapSkeleton p {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] #mapSkeleton p.text-\[\#5a7d99\] {
+            color: #6e6e73 !important;
+        }
+
+        [data-theme="light"] #mapContainer .absolute.bottom-8.left-8 {
+            background: rgba(255, 255, 255, 0.92) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        [data-theme="light"] #mapContainer .absolute.bottom-8.left-8 span {
+            color: #1d1d1f !important;
+        }
+
+        [data-theme="light"] .absolute.bottom-8.right-8>div {
+            border-color: rgba(0, 0, 0, 0.08) !important;
+            background: rgba(255, 255, 255, 0.92) !important;
+        }
+
+        [data-theme="light"] .absolute.bottom-8.right-8 button {
+            border-color: rgba(0, 0, 0, 0.08) !important;
+        }
+
+        /* Map Container & Tiles (Normal OpenStreetMap Display) */
+        #mapContainer,
+        #dashboardMap {
+            background-color: #e8ecf1 !important;
+        }
+
+        .leaflet-tile-pane,
+        .leaflet-tile,
+        img.leaflet-tile {
+            filter: none !important;
+            -webkit-filter: none !important;
+        }
+
+        /* Prevent vertical displacement when clicking input-embedded buttons */
+        button.-translate-y-1\/2:active,
+        button[class*="-translate-y-1/2"]:active {
+            transform: translateY(-50%) scale(0.94) !important;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-hi);
+            border-radius: 9999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-focus);
+        }
+    </style>
+</head>
+
+<body class="bg-background-dark text-white font-display overflow-hidden h-screen flex flex-col">
+
+    <!-- Top Navigation -->
+    <header id="dashNav"
+        class="fixed top-1 left-3 right-3 sm:top-2 sm:left-4 sm:right-4 z-40 rounded-2xl border border-white/12 bg-black/40 backdrop-blur-xl shadow-lg flex items-center justify-between px-4 sm:px-6 h-14">
+        <div class="flex items-center gap-2 sm:gap-3 text-white cursor-pointer" onclick="location.href='./index.html'"
+            title="Back to Home">
+            <div
+                class="w-7 h-7 bg-primary/20 rounded-full flex items-center justify-center text-primary text-sm flex-shrink-0">
+                <span class="material-symbols-outlined text-[18px]">directions_car</span>
+            </div>
+            <h2 class="text-xs sm:text-base font-bold tracking-tight inline">Quick<span class="text-red-500">Pull</span>
+            </h2>
+        </div>
+
+        <!-- Navigation Links (hidden on mobile) -->
+        <div class="hidden sm:flex items-center gap-1">
+            <button onclick="location.href='./index.html'"
+                class="dash-nav-link px-3 py-1.5 text-gray-300 hover:text-white rounded-full text-xs font-medium transition-colors hover:bg-white/10">Home</button>
+            <button onclick="location.href='./index.html#features'"
+                class="dash-nav-link px-3 py-1.5 text-gray-300 hover:text-white rounded-full text-xs font-medium transition-colors hover:bg-white/10">Features</button>
+            <button onclick="location.href='./index.html#about'"
+                class="dash-nav-link px-3 py-1.5 text-gray-300 hover:text-white rounded-full text-xs font-medium transition-colors hover:bg-white/10">About</button>
+            <button onclick="location.href='./index.html#contact'"
+                class="dash-nav-link px-3 py-1.5 text-gray-300 hover:text-white rounded-full text-xs font-medium transition-colors hover:bg-white/10">Contact</button>
+        </div>
+
+        <div class="flex items-center gap-1.5 sm:gap-3">
+            <!-- Apple Appearance Segmented Control (apple-design skill §10, §14) -->
+            <div class="theme-segmented-control" role="radiogroup" aria-label="Appearance Mode">
+                <button type="button" class="theme-seg-btn" id="theme-btn-light" role="radio" aria-checked="false"
+                    title="Switch to Light Appearance">
+                    <svg viewBox="0 0 24 24" class="theme-seg-icon" aria-hidden="true">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path
+                            d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41">
+                        </path>
+                    </svg>
+                    <span class="theme-seg-label hidden sm:inline">Light</span>
+                </button>
+                <button type="button" class="theme-seg-btn active" id="theme-btn-dark" role="radio" aria-checked="true"
+                    title="Switch to Dark Appearance">
+                    <svg viewBox="0 0 24 24" class="theme-seg-icon" aria-hidden="true">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <span class="theme-seg-label hidden sm:inline">Dark</span>
+                </button>
+            </div>
+
+            <!-- Mobile Map Toggle Button -->
+            <button type="button" id="toggleMapBtn" onclick="toggleMapView(event)"
+                class="md:hidden w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-white cursor-pointer active:scale-95"
+                title="View Map" aria-label="Toggle Map View">
+                <span class="material-symbols-outlined text-[19px] pointer-events-none">map</span>
+            </button>
+
+            <!-- Settings Button -->
+            <button id="settingsBtn" onclick="openSettingsModal()"
+                class="p-2 rounded-full hover:bg-white/10 transition-colors text-white hidden sm:flex cursor-pointer"
+                title="Settings" aria-label="Open Settings">
+                <span class="material-symbols-outlined text-[20px]">settings</span>
+            </button>
+
+            <!-- Profile Dropdown Button -->
+            <div class="relative z-50">
+                <button id="profileBtn"
+                    class="flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-full hover:bg-white/10 transition-colors z-10 relative text-white cursor-pointer"
+                    aria-label="User Profile Menu">
+                    <span class="material-symbols-outlined text-[20px]">account_circle</span>
+                    <span class="material-symbols-outlined text-[14px] hidden sm:inline">arrow_drop_down</span>
+                </button>
+                <!-- Dropdown Menu -->
+                <div id="profileDropdown"
+                    class="profile-dropdown right-0 sm:right-2 top-12 sm:top-14 w-44 sm:w-48 bg-[#192633]/95 border border-white/10 rounded-xl shadow-2xl hidden backdrop-blur-md overflow-hidden">
+                    <div class="p-3 border-b border-white/10">
+                        <p class="text-sm font-semibold text-white">Profile</p>
+                        <p class="text-xs text-gray-400 truncate" id="profileEmail">Loading...</p>
+                    </div>
+                    <button type="button" id="myProfileBtn" onclick="openProfileModal()"
+                        class="w-full flex items-center gap-2 px-4 py-2.5 text-gray-300 hover:text-white hover:bg-white/10 transition-colors text-sm text-left cursor-pointer">
+                        <span class="material-symbols-outlined text-[18px] text-blue-400">person</span>
+                        My Profile
+                    </button>
+                    <button type="button" onclick="openSettingsModal()"
+                        class="w-full flex items-center gap-2 px-4 py-2.5 text-gray-300 hover:text-white hover:bg-white/10 transition-colors text-sm text-left cursor-pointer">
+                        <span class="material-symbols-outlined text-[18px] text-blue-400">settings</span>
+                        Settings
+                    </button>
+                    <button onclick="logout()"
+                        class="w-full flex items-center gap-2 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-600/20 transition-colors text-sm border-t border-white/10 text-left cursor-pointer">
+                        <span class="material-symbols-outlined text-[18px]">logout</span>
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <div class="flex flex-1 overflow-hidden pt-16 sm:pt-18">
+
+        <!-- Left Sidebar (Search & Rides) -->
+        <aside id="sidebarContainer"
+            class="w-full md:w-[400px] flex flex-col bg-[#111a22] border-r border-[#233648] shrink-0 z-10 overflow-hidden">
+
+            <!-- Search Area -->
+            <div class="p-4 sm:p-6 pb-2 flex-shrink-0">
+                <div class="flex flex-col gap-1.5 sm:gap-2">
+                    <label class="text-[#92adc9] text-xs font-bold uppercase tracking-wider ml-1">Pickup
+                        Location</label>
+                    <div class="relative group">
+                        <div class="absolute left-4 top-1/2 -translate-y-1/2 text-secondary">
+                            <span class="material-symbols-outlined">location_on</span>
+                        </div>
+                        <input
+                            class="w-full h-12 sm:h-14 bg-[#192633] text-white placeholder-[#5a6b7c] pl-12 pr-12 rounded-2xl border border-transparent focus:border-secondary focus:ring-1 focus:ring-secondary focus:outline-none transition-all shadow-[0_4px_14px_0_rgba(0,0,0,0.2)]"
+                            placeholder="Your location" type="text" id="pickupInput" readonly>
+                        <button onclick="openMapModal('pickup')"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[#92adc9] hover:text-white rounded-full hover:bg-[#233648] transition-colors">
+                            <span class="material-symbols-outlined text-[20px]">map</span>
+                        </button>
+                    </div>
+                    <div class="text-xs text-[#5a6b7c] ml-1 flex gap-2">
+                        <button type="button" onclick="useCurrentLocation()"
+                            class="text-secondary hover:text-primary font-medium">Use Current</button>
+                        <span class="text-[#233648]">•</span>
+                        <button type="button" onclick="openMapModal('pickup')"
+                            class="text-secondary hover:text-primary font-medium">Pick on Map</button>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-1.5 sm:gap-2 mt-3 sm:mt-4">
+                    <label class="text-[#92adc9] text-xs font-bold uppercase tracking-wider ml-1">Destination</label>
+                    <div class="relative group">
+                        <div class="absolute left-4 top-1/2 -translate-y-1/2 text-primary">
+                            <span class="material-symbols-outlined">location_on</span>
+                        </div>
+                        <input
+                            class="w-full h-12 sm:h-14 bg-[#192633] text-white placeholder-[#5a6b7c] pl-12 pr-12 rounded-2xl border border-transparent focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all shadow-[0_4px_14px_0_rgba(0,0,0,0.2)]"
+                            placeholder="Where to?" type="text" id="destinationInput">
+                        <button onclick="openMapModal('destination')"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[#92adc9] hover:text-white rounded-full hover:bg-[#233648] transition-colors">
+                            <span class="material-symbols-outlined text-[20px]">map</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coordinates Display -->
+            <div class="px-4 sm:px-6 grid grid-cols-2 gap-2 sm:gap-3 py-2 sm:py-3 flex-shrink-0">
+                <div class="bg-[#192633] p-2.5 sm:p-3 rounded-2xl border border-[#233648]">
+                    <div class="text-[#92adc9] text-xs font-medium mb-1">Latitude</div>
+                    <input type="text" id="destLat" readonly class="text-white text-sm font-bold bg-transparent w-full"
+                        placeholder="Lat">
+                </div>
+                <div class="bg-[#192633] p-2.5 sm:p-3 rounded-2xl border border-[#233648]">
+                    <div class="text-[#92adc9] text-xs font-medium mb-1">Longitude</div>
+                    <input type="text" id="destLng" readonly class="text-white text-sm font-bold bg-transparent w-full"
+                        placeholder="Lng">
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-2 gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 flex-shrink-0">
+                <button onclick="searchRides()"
+                    class="bg-primary hover:bg-blue-600 text-white px-4 py-2.5 sm:py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95">
+                    <span class="material-symbols-outlined text-[18px]">search</span>
+                    Search
+                </button>
+                <a href="./AddRide-Connected.html"
+                    class="bg-secondary hover:bg-green-700 text-black px-4 py-2.5 sm:py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95">
+                    <span class="material-symbols-outlined text-[18px]">directions_car</span>
+                    Offer
+                </a>
+            </div>
+
+            <!-- Tabbed Layout: Available Rides vs My Trips -->
+            <div class="flex-1 overflow-hidden flex flex-col px-4 sm:px-6 pt-3 sm:pt-4 pb-2">
+
+                <!-- Tab Headers -->
+                <div class="flex gap-2 mb-3 flex-shrink-0">
+                    <button onclick="switchTab('available')" id="availableTab"
+                        class="px-4 py-2 rounded-lg font-bold text-sm bg-primary text-white transition-all">
+                        Available Rides
+                    </button>
+                    <button onclick="switchTab('mytrips')" id="mytripsTab"
+                        class="px-4 py-2 rounded-lg font-bold text-sm bg-[#233648] text-[#92adc9] hover:bg-[#2d465e] transition-all">
+                        My Trips <span id="acceptedCount"
+                            class="text-xs ml-1 px-2 py-0.5 rounded-full bg-secondary/20 text-secondary">0</span>
+                    </button>
+                </div>
+
+                <!-- Content Block -->
+                <div class="flex-1 overflow-hidden flex flex-col min-w-0">
+
+                    <!-- Available Rides Tab -->
+                    <div id="availableRidesTab" class="flex-1 overflow-y-auto flex flex-col gap-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="text-white font-bold text-lg">Available Rides</h3>
+                            <span id="matchCount"
+                                class="text-xs font-medium px-2 py-1 rounded-full bg-primary/20 text-primary">0
+                                Found</span>
+                        </div>
+                        <div class="flex-1 overflow-y-auto flex flex-col gap-4" id="ridesList">
+                            <div class="text-center py-8 text-[#92adc9] text-sm">
+                                <span class="material-symbols-outlined text-4xl block mb-2 opacity-50">info</span>
+                                Enter destination and search for rides
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- My Trips Tab -->
+                    <div id="mytripsRidesTab" class="flex-1 overflow-y-auto flex flex-col gap-2 hidden">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="text-white font-bold text-lg">My Trips</h3>
+                        </div>
+                        <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="acceptedRidesList">
+                            <div class="text-center py-8 text-[#92adc9] text-sm">
+                                <span class="material-symbols-outlined text-4xl block mb-2 opacity-50">inbox</span>
+                                No accepted rides yet
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Help -->
+            <!-- <div class="p-4 border-t border-[#233648] bg-[#151f2a] flex-shrink-0">
+                <button onclick="showNotification('Help coming soon!', 'info')" class="flex items-center gap-3 text-[#92adc9] hover:text-white transition-colors w-full px-2">
+                    <span class="material-symbols-outlined">help</span>
+                    <span class="text-sm font-medium">Help Center</span>
+                </button>
+            </div> -->
+        </aside>
+
+        <!-- Main Map Area -->
+        <main id="mapContainer" class="flex-1 relative bg-[#0f151b] overflow-hidden">
+            <!-- Map Skeleton Loading -->
+            <div id="mapSkeleton" class="absolute inset-0 z-20 bg-[#0f151b] flex flex-col items-center justify-center">
+                <div class="w-full h-full p-4 flex flex-col gap-3">
+                    <div class="skeleton-shimmer flex-1 rounded-xl"></div>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                        <div class="w-12 h-12 rounded-full border-3 border-[#233648] border-t-primary animate-spin">
+                        </div>
+                        <p class="text-[#92adc9] text-sm font-medium">Loading map...</p>
+                        <p class="text-[#5a7d99] text-xs">Getting your location</p>
+                    </div>
+                </div>
+            </div>
+            <div id="dashboardMap" class="w-full h-full"></div>
+
+            <!-- Mobile Close Button (top-left fallback) -->
+            <button id="closeMapBtn" onclick="closeMapView()"
+                class="hidden absolute top-3 left-3 md:hidden z-50 p-2 rounded-full bg-[#192633]/90 text-white border border-[#233648] hover:bg-[#233648] backdrop-blur-md shadow-lg transition-colors">
+                <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+            </button>
+
+            <!-- Map Controls -->
+            <div class="absolute bottom-8 right-8 z-30 flex flex-col gap-2">
+                <button onclick="refreshMap()"
+                    class="size-10 bg-[#192633] text-white rounded-xl shadow-lg border border-[#233648] hover:bg-[#233648] hover:border-primary/50 transition-all flex items-center justify-center">
+                    <span class="material-symbols-outlined">my_location</span>
+                </button>
+                <div class="flex flex-col rounded-xl overflow-hidden shadow-lg border border-[#233648]">
+                    <button onclick="zoomIn()"
+                        class="size-10 bg-[#192633] text-white hover:bg-[#233648] transition-colors flex items-center justify-center border-b border-[#233648]">
+                        <span class="material-symbols-outlined">add</span>
+                    </button>
+                    <button onclick="zoomOut()"
+                        class="size-10 bg-[#192633] text-white hover:bg-[#233648] transition-colors flex items-center justify-center">
+                        <span class="material-symbols-outlined">remove</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Map Legend -->
+            <div
+                class="absolute bottom-8 left-8 z-30 bg-[#192633]/90 backdrop-blur-sm p-3 rounded-xl border border-[#233648] shadow-lg">
+                <div class="flex flex-col gap-2">
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-1 bg-primary rounded-full"></div>
+                        <span class="text-xs text-white font-medium">Your Location</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-1 bg-secondary rounded-full"></div>
+                        <span class="text-xs text-white font-medium">Destination</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Map Picker Modal -->
+    <div id="mapModal" class="map-modal">
+        <div class="map-modal-content">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Select Location on Map</h3>
+                <button onclick="closeMapModal()" class="text-[#92adc9] hover:text-white">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+            </div>
+            <div id="pickerMap" class="mb-4"></div>
+            <p class="text-sm text-[#92adc9] mb-4">Click on the map to select your destination</p>
+            <div class="flex gap-2">
+                <button onclick="confirmMapSelection()"
+                    class="flex-1 bg-primary hover:bg-blue-600 text-white py-2 rounded-lg font-bold transition-colors">
+                    Confirm Location
+                </button>
+                <button onclick="closeMapModal()"
+                    class="flex-1 bg-[#233648] hover:bg-[#2d465e] text-white py-2 rounded-lg font-bold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Ride Modal -->
+    <div id="joinRideModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center"
+        style="z-index: 9999;">
+        <div class="bg-[#192633] rounded-2xl p-6 max-w-md w-full mx-4 border border-[#233648]">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Join This Ride?</h3>
+                <button onclick="closeJoinModal()" class="text-[#92adc9] hover:text-white">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+            </div>
+            <div id="joinRideContent" class="space-y-3 mb-6">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="flex gap-2">
+                <button id="joinRideConfirmBtn" onclick="confirmJoinRide()"
+                    class="flex-1 bg-primary hover:bg-blue-600 text-white py-2 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                    <span id="joinRideBtnText">Send Request</span>
+                </button>
+                <button onclick="closeJoinModal()"
+                    class="flex-1 bg-[#233648] hover:bg-[#2d465e] text-white py-2 rounded-xl font-bold transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Driver Details Modal -->
+    <div id="driverDetailsModal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center"
+        style="z-index: 9999;">
+        <div class="bg-[#192633] rounded-2xl p-6 max-w-md w-full mx-4 border border-[#233648]">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Driver Details</h3>
+                <button onclick="closeDriverDetailsModal()" class="text-[#92adc9] hover:text-white">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+            </div>
+            <div id="driverDetailsContent" class="space-y-3 mb-6">
+                <!-- Populated dynamically -->
+            </div>
+            <button onclick="closeDriverDetailsModal()"
+                class="w-full bg-primary hover:bg-blue-600 text-white py-2 rounded-xl font-bold transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Driver Location Modal -->
+    <div id="driverLocationModal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center"
+        style="z-index: 9999;">
+        <div class="bg-[#192633] rounded-2xl p-4 max-w-2xl w-full mx-4 border border-[#233648]">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Driver Location</h3>
+                <button onclick="closeDriverLocationModal()" class="text-[#92adc9] hover:text-white">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+            </div>
+            <div id="driverLocationMap" style="height: 400px; border-radius: 12px; overflow: hidden;"></div>
+            <div class="mt-4 flex gap-2">
+                <button onclick="closeDriverLocationModal()"
+                    class="flex-1 bg-primary hover:bg-blue-600 text-white py-2 rounded-xl font-bold transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trip Details Modal -->
+    <div id="tripDetailsModal"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center"
+        style="z-index: 9999;">
+        <div class="bg-[#192633] rounded-2xl p-6 max-w-md w-full mx-4 border border-[#233648]">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Trip Details</h3>
+                <button onclick="closeTripDetailsModal()" class="text-[#92adc9] hover:text-white">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+            </div>
+            <div id="tripDetailsContent" class="space-y-4 mb-6">
+                <!-- Populated dynamically -->
+            </div>
+            <button onclick="closeTripDetailsModal()"
+                class="w-full bg-primary hover:bg-blue-600 text-white py-2 rounded-xl font-bold transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Message Modal -->
+    <div id="messageModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center"
+        style="z-index: 9999;">
+        <div class="bg-[#192633] rounded-2xl p-6 max-w-md w-full mx-4 border border-[#233648]">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Message <span id="messageDriverName"
+                        class="text-secondary">Driver</span></h3>
+                <button onclick="closeMessageModal()" class="text-[#92adc9] hover:text-white">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+            </div>
+            <div id="messagesContainer"
+                class="bg-[#151f2a] rounded-lg p-3 h-64 overflow-y-auto mb-3 space-y-2 border border-[#233648]">
+                <!-- Messages populated here -->
+            </div>
+            <!-- Smart Reply Chips -->
+            <div id="smartReplyChipsDash" class="hidden mb-2 flex gap-2 flex-wrap"></div>
+            <div class="flex gap-2">
+                <input type="text" id="messageInput" placeholder="Type message..."
+                    class="flex-1 bg-[#151f2a] text-white placeholder-[#5a6b7c] px-3 py-2 rounded-lg border border-[#233648] focus:border-primary focus:outline-none"
+                    onkeypress="if(event.key==='Enter')sendMessage()">
+                <button onclick="sendMessage()"
+                    class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold transition-colors">
+                    Send
+                </button>
+            </div>
+            <button onclick="closeMessageModal()"
+                class="w-full bg-[#233648] hover:bg-[#2d465e] text-white py-2 rounded-xl font-bold transition-colors mt-3">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="fixed top-24 right-4 space-y-2 z-50"></div>
+
+    <!-- Scripts -->
+    <script src="api-config.js"></script>
+    <script src="api-client.js"></script>
+    <script src="auth-service.js"></script>
+    <script src="trip-service.js"></script>
+    <script src="trip-service-api.js"></script>
+    <script src="message-service.js"></script>
+    <script src="matchingService.js"></script>
+    <script src="notification-manager.js"></script>
+    <script src="quickpull-modals.js"></script>
+
+    <script>
+        // Navbar scroll effect
+        window.addEventListener('scroll', function () {
+            const nav = document.getElementById('dashNav');
+            if (nav) nav.classList.toggle('scrolled', window.scrollY > 40);
+        }, { passive: true });
+
+        let dashboardMap = null;
+        let pickerMap = null;
+        let mapMode = null; // Track whether map is for 'pickup' or 'destination'
+        let userLocation = null;
+        let pickupLocation = null; // Rider's desired pickup location (can be different from current location)
+        let destinationLocation = null;
+        let selectedRideForJoin = null;
+        let selectedMapLocation = null;
+        let destinationMarker = null;
+        let riderTripFare = 0; // Store the calculated fare based on rider's distance
+        let currentRideFare = 0; // Store the fare for the currently selected ride in the modal
+        let lastRiderDistance = 0; // Store the last calculated rider distance for fare calculation
+        let acceptedRides = []; // Store accepted rides for modal functions
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (!AuthService.isAuthenticated()) {
+                window.location.href = './index.html';
+                return;
+            }
+            populateProfileEmail();
+            // Initialize NotificationManager socket for real-time updates
+            const notificationManager = window.NotificationManager || NotificationManager;
+            if (notificationManager && typeof notificationManager.initializeSocket === 'function') {
+                notificationManager.initializeSocket();
+            } else {
+                console.warn('[NOTIFICATIONS] NotificationManager is unavailable on dashboard startup.');
+            }
+            await loadDashboard();
+        });
+
+        // Populate profile email in dropdown
+        function populateProfileEmail() {
+            const user = AuthService.getCurrentUser();
+            if (user) {
+                const profileEmailEl = document.getElementById('profileEmail');
+                if (profileEmailEl) {
+                    profileEmailEl.textContent = user.email || user.username || 'User';
+                }
+            }
+        }
+
+        // Profile dropdown toggle
+        document.addEventListener('DOMContentLoaded', () => {
+            const profileBtn = document.getElementById('profileBtn');
+            const profileDropdown = document.getElementById('profileDropdown');
+
+            if (profileBtn && profileDropdown) {
+                profileBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    profileDropdown.classList.toggle('hidden');
+                });
+
+                // Close dropdown when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!profileBtn.contains(e.target) && !profileDropdown.contains(e.target)) {
+                        profileDropdown.classList.add('hidden');
+                    }
+                });
+            }
+        });
+
+        // Calculate fare based on vehicle type and distance
+        function calculateFare(distance, vehicleType) {
+            // Default to 'car' if vehicle type is not specified
+            const type = (vehicleType || 'car').toLowerCase();
+            const minimumFare = 40; // Minimum base fare
+
+            let ratePerKm;
+            switch (type) {
+                case 'bike':
+                case 'motorcycle':
+                    ratePerKm = 20; // ₹20 per km for bikes
+                    break;
+                case 'ev':
+                case 'electric':
+                    ratePerKm = 40; // ₹40 per km for EV
+                    break;
+                case 'car':
+                default:
+                    ratePerKm = 30; // ₹30 per km for cars
+            }
+
+            const calculatedFare = Math.round(distance * ratePerKm);
+            const fare = Math.max(calculatedFare, minimumFare); // Apply minimum base fare
+            console.log(`[Fare] Vehicle: ${type}, Distance: ${distance.toFixed(2)}km, Rate: ₹${ratePerKm}/km, Calculated: ₹${calculatedFare}, Final: ₹${fare}`);
+            return fare;
+        }
+
+        // Calculate distance between two coordinates using Haversine formula
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            console.log(`Calculating distance from (${lat1}, ${lon1}) to (${lat2}, ${lon2})`);
+            const R = 6371; // Earth's radius in km
+            const dLat = ((lat2 - lat1) * Math.PI) / 180;
+            const dLon = ((lon2 - lon1) * Math.PI) / 180;
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos((lat1 * Math.PI) / 180) *
+                Math.cos((lat2 * Math.PI) / 180) *
+                Math.sin(dLon / 2) *
+                Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c;
+            console.log(`Calculated distance: ${distance.toFixed(2)} km`);
+            return distance;
+        }
+
+        function getSafeMapCenter() {
+            if (userLocation && typeof userLocation.lat === 'number' && typeof userLocation.lng === 'number') {
+                return userLocation;
+            }
+            return { lat: 28.6139, lng: 77.2090 }; // Default to Delhi if location is unavailable
+        }
+
+        async function loadDashboard() {
+            try {
+                const user = AuthService.getCurrentUser();
+                if (window.innerWidth <= 768 && typeof setMobileView === 'function') {
+                    setMobileView('dashboard');
+                }
+                await getUserLocation();
+                await loadAcceptedRides();
+                initializeMap();
+                if (window.innerWidth <= 768 && typeof setMobileView === 'function') {
+                    setMobileView('dashboard');
+                }
+                checkActiveTrip();
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                showNotification('Error loading dashboard', 'error');
+            }
+        }
+
+        // Update pickup distances for all displayed rides based on driver's live location
+        function updatePickupDistances(driverLocations) {
+            if (!window.availableRides || window.availableRides.length === 0) return;
+
+            // For each displayed ride, update the pickup distance if driver location is available
+            window.availableRides.forEach(ride => {
+                if (driverLocations[ride._id]) {
+                    const driverLoc = driverLocations[ride._id];
+
+                    // Get rider's pickup point
+                    if (pickupLocation) {
+                        const distance = calculateDistance(
+                            driverLoc.lat,
+                            driverLoc.lng,
+                            pickupLocation.lat,
+                            pickupLocation.lng
+                        );
+                        ride.pickupDistance = parseFloat(distance.toFixed(2));
+                    }
+                }
+            });
+
+            // Re-render rides with updated distances, using the stored rider distance
+            displayRides(window.availableRides, lastRiderDistance);
+        }
+
+        async function getFallbackLocationFromIp() {
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                const data = await response.json();
+                if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+                    return { lat: data.latitude, lng: data.longitude };
+                }
+            } catch (error) {
+                console.warn('[LOCATION] IP-based fallback failed:', error);
+            }
+            return null;
+        }
+
+        async function getUserLocation() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) {
+                    console.warn('Geolocation not supported');
+                    showNotification('Geolocation unavailable', 'warning');
+                    resolve();
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        if (document.getElementById('pickupInput')) {
+                            document.getElementById('pickupInput').value = `📍 ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`;
+                        }
+                        reverseGeocode(userLocation.lat, userLocation.lng).then(name => {
+                            const pickupInput = document.getElementById('pickupInput');
+                            if (name && pickupInput) pickupInput.value = `📍 ${name}`;
+                        });
+                        showNotification('✓ Location detected', 'success');
+                        resolve();
+                    },
+                    async (error) => {
+                        console.warn('[LOCATION] Geolocation failed, trying fallback:', error);
+                        const fallbackLocation = await getFallbackLocationFromIp();
+                        if (fallbackLocation) {
+                            userLocation = fallbackLocation;
+                            const pickupInput = document.getElementById('pickupInput');
+                            if (pickupInput) {
+                                pickupInput.value = `📍 ${fallbackLocation.lat.toFixed(4)}, ${fallbackLocation.lng.toFixed(4)}`;
+                            }
+                            showNotification('✓ Approximate location detected', 'info');
+                        } else {
+                            userLocation = getSafeMapCenter();
+                            showNotification('Using default location for map view', 'warning');
+                        }
+                        resolve();
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+                );
+            });
+        }
+
+        function useCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        pickupLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        document.getElementById('pickupInput').value = `📍 ${pickupLocation.lat.toFixed(4)}, ${pickupLocation.lng.toFixed(4)}`;
+                        // Reverse geocode to show place name
+                        reverseGeocode(pickupLocation.lat, pickupLocation.lng).then(name => {
+                            if (name) document.getElementById('pickupInput').value = `📍 ${name}`;
+                        });
+                        console.log('[DEBUG] Pickup location set to current location:', pickupLocation);
+                        showNotification('✓ Pickup location updated', 'success');
+                    },
+                    (error) => {
+                        showNotification('Unable to get current location', 'error');
+                    }
+                );
+            }
+        }
+
+        function initializeMap() {
+            if (typeof L === 'undefined') {
+                console.warn('[MAP] Leaflet is not available yet.');
+                return;
+            }
+
+            const mapEl = document.getElementById('dashboardMap');
+            if (!mapEl) {
+                console.warn('[MAP] Dashboard map container is missing.');
+                return;
+            }
+
+            const mapContainer = document.getElementById('mapContainer');
+            if (mapContainer && window.innerWidth > 768) {
+                mapContainer.classList.add('show');
+            }
+
+            if (dashboardMap) dashboardMap.remove();
+
+            const safeLocation = getSafeMapCenter();
+            const mapCenter = [safeLocation.lat, safeLocation.lng];
+
+            dashboardMap = L.map('dashboardMap').setView(mapCenter, 15);
+            window.dashboardMapInstance = dashboardMap;
+
+            const tileLayerInstance = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19,
+                keepBuffer: 6,
+                crossOrigin: true
+            }).addTo(dashboardMap);
+
+            // Smooth fade-out for map skeleton
+            function dismissMapSkeleton() {
+                const skel = document.getElementById('mapSkeleton');
+                if (!skel || skel.classList.contains('fade-out')) return;
+                skel.classList.add('fade-out');
+                skel.addEventListener('transitionend', () => skel.remove(), { once: true });
+                // Safety fallback in case transitionend doesn't fire
+                setTimeout(() => { if (skel.parentNode) skel.remove(); }, 1000);
+            }
+
+            // Hide map skeleton once tiles start loading
+            tileLayerInstance.once('load', dismissMapSkeleton);
+            tileLayerInstance.once('tileload', dismissMapSkeleton);
+            if (dashboardMap._loaded) {
+                setTimeout(dismissMapSkeleton, 100);
+            } else {
+                dashboardMap.once('load', dismissMapSkeleton);
+            }
+            // Fast fallback: hide skeleton after 800ms
+            setTimeout(dismissMapSkeleton, 800);
+            setTimeout(() => {
+                if (dashboardMap) {
+                    dashboardMap.invalidateSize();
+                }
+            }, 250);
+            setTimeout(() => {
+                if (dashboardMap) {
+                    dashboardMap.invalidateSize();
+                }
+            }, 1000);
+
+            // Show pickup location marker if available
+            if (destinationLocation && destinationLocation.lat && destinationLocation.lng) {
+                L.circleMarker([destinationLocation.lat, destinationLocation.lng], {
+                    radius: 8,
+                    fillColor: '#00d26a',
+                    color: '#fff',
+                    weight: 3,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(dashboardMap)
+                    .bindPopup('Pickup Location');
+            }
+
+            // Also show user's current location
+            L.circleMarker([safeLocation.lat, safeLocation.lng], {
+                radius: 6,
+                fillColor: '#10b981',
+                color: '#fff',
+                weight: 2,
+                opacity: 0.7,
+                fillOpacity: 0.6
+            }).addTo(dashboardMap)
+                .bindPopup('Your Location');
+        }
+
+        function openMapModal(mode) {
+            mapMode = mode; // Store the mode globally
+            document.getElementById('mapModal').classList.add('active');
+
+            setTimeout(() => {
+                if (pickerMap) pickerMap.remove();
+
+                const pickerCenter = getSafeMapCenter();
+                pickerMap = L.map('pickerMap').setView([pickerCenter.lat, pickerCenter.lng], 15);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap',
+                    maxZoom: 19,
+                    keepBuffer: 6,
+                    crossOrigin: true
+                }).addTo(pickerMap);
+
+                pickerMap.on('click', (e) => {
+                    selectedMapLocation = { lat: e.latlng.lat, lng: e.latlng.lng };
+
+                    // Remove all existing markers and circle markers
+                    pickerMap.eachLayer((layer) => {
+                        if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
+                            pickerMap.removeLayer(layer);
+                        }
+                    });
+
+                    L.marker([selectedMapLocation.lat, selectedMapLocation.lng])
+                        .addTo(pickerMap)
+                        .bindPopup('Selected')
+                        .openPopup();
+                });
+            }, 100);
+        }
+
+        function closeMapModal() {
+            document.getElementById('mapModal').classList.remove('active');
+            selectedMapLocation = null;
+        }
+
+        function confirmMapSelection() {
+            if (!selectedMapLocation) {
+                showNotification('Click on map to select location', 'warning');
+                return;
+            }
+
+            let mode = mapMode || 'destination'; // Use stored mode, default to destination
+            console.log('[DEBUG] Confirming map selection with mode:', mode);
+
+            if (mode === 'pickup') {
+                pickupLocation = {
+                    lat: selectedMapLocation.lat,
+                    lng: selectedMapLocation.lng
+                };
+                document.getElementById('pickupInput').value = `📍 ${pickupLocation.lat.toFixed(4)}, ${pickupLocation.lng.toFixed(4)}`;
+                reverseGeocode(pickupLocation.lat, pickupLocation.lng).then(name => {
+                    if (name) document.getElementById('pickupInput').value = `📍 ${name}`;
+                });
+                console.log('[DEBUG] Pickup location set via map:', pickupLocation);
+                showNotification('✓ Pickup location set', 'success');
+            } else {
+                destinationLocation = {
+                    lat: selectedMapLocation.lat,
+                    lng: selectedMapLocation.lng
+                };
+                document.getElementById('destLat').value = selectedMapLocation.lat.toFixed(6);
+                document.getElementById('destLng').value = selectedMapLocation.lng.toFixed(6);
+                // Show destination name in input
+                document.getElementById('destinationInput').value = `${destinationLocation.lat.toFixed(4)}, ${destinationLocation.lng.toFixed(4)}`;
+                reverseGeocode(destinationLocation.lat, destinationLocation.lng).then(name => {
+                    if (name) document.getElementById('destinationInput').value = name;
+                });
+                console.log('Destination updated to:', destinationLocation);
+
+                // Calculate distance but don't show fare preview (depends on vehicle type)
+                const startLocation = pickupLocation || userLocation;
+                if (startLocation && destinationLocation) {
+                    const previewDistance = calculateDistance(
+                        startLocation.lat,
+                        startLocation.lng,
+                        destinationLocation.lat,
+                        destinationLocation.lng
+                    );
+                    console.log(`[DEBUG] Destination distance: ${previewDistance.toFixed(2)} km`);
+                    showNotification(`✓ Destination set (${previewDistance.toFixed(2)} km)`, 'success');
+                } else {
+                    showNotification('✓ Destination set', 'success');
+                }
+            }
+
+            if (dashboardMap) {
+                // Remove old destination marker if it exists
+                if (destinationLocation && mode === 'destination' && destinationMarker) {
+                    dashboardMap.removeLayer(destinationMarker);
+                }
+
+                // Add new destination marker for destination mode
+                if (destinationLocation && mode === 'destination') {
+                    destinationMarker = L.circleMarker([destinationLocation.lat, destinationLocation.lng], {
+                        fillOpacity: 0.8,
+                        color: '#137fec',
+                        fillColor: '#137fec'
+                    }).addTo(dashboardMap).bindPopup('Destination');
+                }
+
+                // Fit bounds if both locations exist
+                if (userLocation && destinationLocation) {
+                    dashboardMap.fitBounds([
+                        [userLocation.lat, userLocation.lng],
+                        [destinationLocation.lat, destinationLocation.lng]
+                    ]);
+                }
+            }
+
+            closeMapModal();
+        }
+
+        // Reverse geocode coordinates to human-readable place name
+        async function reverseGeocode(lat, lng) {
+            try {
+                const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`, {
+                    headers: { 'Accept-Language': 'en' }
+                });
+                const data = await resp.json();
+                if (data && data.address) {
+                    const a = data.address;
+                    const parts = [];
+                    if (a.road || a.pedestrian || a.highway) parts.push(a.road || a.pedestrian || a.highway);
+                    if (a.suburb || a.neighbourhood || a.quarter) parts.push(a.suburb || a.neighbourhood || a.quarter);
+                    if (a.city || a.town || a.village) parts.push(a.city || a.town || a.village);
+                    return parts.length > 0 ? parts.join(', ') : (data.display_name ? data.display_name.split(',').slice(0, 3).join(',') : null);
+                }
+                return null;
+            } catch (e) {
+                console.warn('[GEOCODE] Reverse geocode failed:', e);
+                return null;
+            }
+        }
+
+        async function searchRides() {
+            try {
+                if (!destinationLocation) {
+                    showNotification('Please set a destination first', 'warning');
+                    return;
+                }
+
+                // **NEW: Start GPS streaming for real-time matching**
+                if (matchingService && matchingService.initializeSocket) {
+                    matchingService.initializeSocket();
+                    console.log('[SEARCH] Initialized Socket.IO for real-time matching');
+                }
+
+                const ridesList = document.getElementById('ridesList');
+                ridesList.innerHTML = `
+                    <div class="space-y-4 animate-pulse">
+                        ${[1, 2, 3].map(() => `
+                        <div class="skeleton-card">
+                            <div class="flex gap-4">
+                                <div class="skeleton-shimmer w-12 h-12 rounded-full flex-shrink-0"></div>
+                                <div class="flex-1 space-y-2">
+                                    <div class="skeleton-shimmer h-4 w-3/4 rounded"></div>
+                                    <div class="flex gap-3">
+                                        <div class="skeleton-shimmer h-3 w-16 rounded"></div>
+                                        <div class="skeleton-shimmer h-3 w-12 rounded"></div>
+                                    </div>
+                                </div>
+                                <div class="skeleton-shimmer h-5 w-20 rounded-full"></div>
+                            </div>
+                            <div class="mt-3 space-y-2">
+                                <div class="flex justify-between"><div class="skeleton-shimmer h-3 w-24 rounded"></div><div class="skeleton-shimmer h-3 w-16 rounded"></div></div>
+                                <div class="flex justify-between"><div class="skeleton-shimmer h-3 w-20 rounded"></div><div class="skeleton-shimmer h-3 w-14 rounded"></div></div>
+                            </div>
+                            <div class="skeleton-shimmer mt-3 h-10 w-full rounded-lg"></div>
+                        </div>`).join('')}
+                    </div>
+                    <p class="text-center text-[#92adc9] text-xs mt-3">⚡ Searching for rides...</p>
+                `;
+
+                // Calculate the distance between rider's pickup and dropoff
+                const riderDistance = calculateDistance(
+                    userLocation.lat,
+                    userLocation.lng,
+                    destinationLocation.lat,
+                    destinationLocation.lng
+                );
+
+                // Store the distance globally for use in updatePickupDistances
+                lastRiderDistance = riderDistance;
+
+                // Calculate fare based on distance (will be calculated per ride based on vehicle type)
+                riderTripFare = 0; // Will be calculated for each ride individually
+                // Use map-picked pickup if available, otherwise use current GPS location
+                const effectivePickup = pickupLocation || userLocation;
+                console.log('🚗 [SEARCH-RIDES] Destination:', destinationLocation);
+                console.log('📍 [SEARCH-RIDES] Effective Pickup:', effectivePickup, '(source:', pickupLocation ? 'map-picked' : 'GPS', ')');
+                console.log('📏 [SEARCH-RIDES] Rider Distance:', riderDistance.toFixed(2) + ' km');
+                console.log('[SEARCH-RIDES] Search params:', {
+                    pickup: [effectivePickup.lng, effectivePickup.lat],
+                    dropoff: [destinationLocation.lng, destinationLocation.lat],
+                    riderDistance: riderDistance.toFixed(2),
+                    maxDistance: 10
+                });
+
+                const response = await TripServiceAPI.findMatches(
+                    [effectivePickup.lng, effectivePickup.lat],
+                    [destinationLocation.lng, destinationLocation.lat],
+                    10
+                );
+
+                console.log('✅ [SEARCH-RESPONSE] Found matches:', response.matches?.length || 0);
+
+                if (response && response.matches && response.matches.length > 0) {
+                    console.log('📋 [DISPLAY-RIDES] Displaying rides with fare:', riderTripFare);
+                    displayRides(response.matches, riderDistance);
+
+                    // **NEW: Start GPS streaming for first matched trip**
+                    if (response.matches.length > 0 && matchingService) {
+                        const firstTripId = response.matches[0]._id;
+                        matchingService.startGpsStreaming(firstTripId);
+                        console.log('[GPS-STREAM] Started GPS tracking for top match');
+                    }
+                } else {
+                    ridesList.innerHTML = '<div class="text-center py-8 text-[#92adc9]"><span class="material-symbols-outlined text-4xl block mb-2 opacity-50">search_off</span><p>No matching rides found</p><p class="text-xs mt-2">Try a different destination or create a ride instead!</p></div>';
+                }
+            } catch (error) {
+                console.error('❌ Error searching rides:', error);
+                showNotification('Error searching rides: ' + error.message, 'error');
+                document.getElementById('ridesList').innerHTML = '<p class="text-red-400 text-center py-4">Error loading rides. Check console for details.</p>';
+            }
+        }
+
+        function displayRides(rides, riderDistance) {
+            const ridesList = document.getElementById('ridesList');
+            document.getElementById('matchCount').textContent = rides.length + ' Found';
+
+            console.log('[DEBUG] displayRides - riderDistance:', riderDistance);
+
+            if (!rides || rides.length === 0) {
+                ridesList.innerHTML = '<div class="text-center py-8 text-[#92adc9]">No rides available</div>';
+                return;
+            }
+
+            // Store rides globally for real-time updates
+            window.availableRides = rides;
+
+            console.log('displayRides called with fare:', riderTripFare);
+            const currentUserId = AuthService.getCurrentUser()._id;
+            console.log('Current user ID:', currentUserId);
+
+            // Filter out rides where user has already sent a request - these should only show in My Trip section
+            const availableOnlyRides = rides.filter(ride => {
+                if (ride.riders && ride.riders.length > 0) {
+                    const myRequest = ride.riders.find(r => {
+                        const riderIdToCheck = r.riderId && r.riderId._id ? r.riderId._id : r.riderId;
+                        return riderIdToCheck === currentUserId || (typeof riderIdToCheck === 'object' && riderIdToCheck.toString() === currentUserId);
+                    });
+                    // Skip this ride if user has already requested
+                    if (myRequest) {
+                        console.log('[FILTER] Skipping ride', ride._id, '- already requested');
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            // Update the count to show only truly available rides
+            document.getElementById('matchCount').textContent = availableOnlyRides.length + ' Found';
+
+            if (availableOnlyRides.length === 0) {
+                ridesList.innerHTML = '<div class="text-center py-8 text-[#92adc9]">No rides available</div>';
+                return;
+            }
+
+            ridesList.innerHTML = availableOnlyRides.map((ride, index) => {
+                // Use backend-calculated fare based on rider pickup → min(rider dropoff, driver dropoff)
+                const vehicleType = (ride.vehicle || ride.driver?.vehicle || 'car').toLowerCase();
+                const estimatedFare = ride.estimatedFare || calculateFare(riderDistance, vehicleType);
+                const estimatedDistance = ride.estimatedDistance || riderDistance;
+                const ratePerKm = ride.ratePerKm || (vehicleType === 'bike' ? 20 : vehicleType === 'ev' ? 40 : 30);
+                console.log(`[FARE_DEBUG] Ride ${index}: estimatedDistance=${estimatedDistance}, vehicleType=${vehicleType}, estimatedFare=${estimatedFare}`);
+
+                // Show Join Ride button (all rides here are truly available - no requests sent)
+                const buttonHTML = `
+                    <button id="cardJoinBtn_${ride._id}" onclick="openJoinRideModal('${ride._id}', '${ride.driver.firstName}', ${estimatedFare}, ${ride.availableSeats}, ${ride.occupiedSeats}, ${ride.matchScore}, ${estimatedDistance}, ${ratePerKm})" class="w-full mt-3 bg-primary hover:bg-blue-600 text-white text-sm font-bold h-9 rounded-full transition-all shadow-[0_2px_8px_rgba(19,127,236,0.4)]">
+                        Request to Join
+                    </button>
+                `;
+
+                return `
+                <div class="ride-card bg-gradient-to-br from-[#192633] to-[#151f2a] p-4 rounded-2xl border ${index === 0 ? 'border-primary/30' : 'border-[#233648]'} hover:border-[#384b5f] transition-all ${index === 0 ? 'shadow-[0_0_10px_rgba(19,127,236,0.5)]' : ''}">
+                    ${index === 0 ? '<div class="absolute -top-2 -right-2 bg-secondary text-black text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Best Match</div>' : ''}
+                    <div class="flex gap-4">
+                        <div class="relative">
+                            <div class="size-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-[#233648]">
+                                ${ride.driver.firstName.charAt(0)}${ride.driver.lastName.charAt(0)}
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-start mb-1">
+                                <h4 class="text-white font-bold truncate">${ride.driver.firstName} ${ride.driver.lastName}</h4>
+                                <span class="text-primary font-bold text-sm">${ride.matchScore}% Match</span>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs text-[#92adc9] mb-3">
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-[14px] text-yellow-400">star</span>
+                                    <span id="driver-score-${ride._id}">${ride.driverScore10 ? ride.driverScore10 + '/10' : (ride.driverRatingCount === 0 ? '<span class="text-[#92adc9] text-[10px]">New</span>' : (ride.driver.rating || 5.0))}</span>
+                                    ${ride.driverRatingCount > 0 ? `<span class="text-[10px] opacity-60">· ${ride.driverRatingCount} reviews</span>` : ''}
+                                </div>
+                                <div class="w-1 h-1 rounded-full bg-[#233648]"></div>
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-[14px]">directions_car</span>
+                                    <span>${ride.vehicle || 'Car'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 space-y-2 text-sm text-[#92adc9]">
+                        <div class="flex justify-between">
+                            <span>Pickup Distance:</span>
+                            <span class="text-white">${ride.pickupDistance !== undefined && ride.pickupDistance !== null ? (ride.pickupDistance === 0 ? 'Same Location' : ride.pickupDistance.toFixed(1) + ' km') : 'N/A'}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Trip Distance:</span>
+                            <span class="text-white">${estimatedDistance.toFixed(1)} km</span>
+                        </div>
+                    </div>
+                    <div class="mt-2 bg-[#151f2a] p-2 rounded-lg border border-[#233648] flex justify-between items-center">
+                        <span class="text-xs text-[#92adc9]">${estimatedDistance.toFixed(1)} km × ₹${ratePerKm}/km</span>
+                        <span class="text-secondary font-bold text-lg">₹${estimatedFare}</span>
+                    </div>
+                    ${buttonHTML}
+                </div>
+            `;
+            }).join('');
+        }
+
+        // Load accepted/active trips for the rider
+        async function loadAcceptedRides() {
+            try {
+                // Show skeleton while loading
+                const acceptedList = document.getElementById('acceptedRidesList');
+                acceptedList.innerHTML = `
+                    <div class="space-y-2 animate-pulse">
+                        ${[1, 2].map(() => `
+                        <div class="skeleton-card p-2">
+                            <div class="flex items-center gap-2 mb-1">
+                                <div class="skeleton-shimmer w-8 h-8 rounded-full flex-shrink-0"></div>
+                                <div class="flex-1 space-y-1">
+                                    <div class="skeleton-shimmer h-3 w-24 rounded"></div>
+                                    <div class="skeleton-shimmer h-2 w-12 rounded"></div>
+                                </div>
+                                <div class="skeleton-shimmer h-4 w-14 rounded"></div>
+                            </div>
+                            <div class="flex gap-1 mt-1">
+                                <div class="skeleton-shimmer h-6 flex-1 rounded"></div>
+                                <div class="skeleton-shimmer h-6 flex-1 rounded"></div>
+                            </div>
+                        </div>`).join('')}
+                    </div>
+                `;
+                const response = await TripServiceAPI.getRiderTrips();
+                if (response && response.trips) {
+                    const acceptedTrips = response.trips.filter(trip => {
+                        const currentUserId = AuthService.getCurrentUser()._id;
+                        const riderData = trip.riders.find(r => {
+                            const riderIdToCheck = r.riderId && r.riderId._id ? r.riderId._id : r.riderId;
+                            return riderIdToCheck === currentUserId || (typeof riderIdToCheck === 'object' && riderIdToCheck.toString() === currentUserId);
+                        });
+                        // Only show active trips (matched, confirmed, ongoing) - exclude completed and cancelled
+                        return riderData && (riderData.status === 'matched' || riderData.status === 'confirmed' || riderData.status === 'ongoing') && trip.status !== 'completed' && trip.status !== 'cancelled';
+                    });
+
+                    // **FIX: Rejoin trip rooms for location updates after page reload**
+                    if (acceptedTrips && acceptedTrips.length > 0) {
+                        console.log('[DEBUG] Rejoining trip rooms for', acceptedTrips.length, 'accepted trips');
+                        for (const trip of acceptedTrips) {
+                            if (NotificationManager && NotificationManager.joinTripRoom) {
+                                NotificationManager.joinTripRoom(trip._id);
+                                console.log('[DEBUG] Rejoined trip room for trip:', trip._id);
+                            }
+                        }
+                    }
+
+                    displayAcceptedRides(acceptedTrips);
+                }
+            } catch (error) {
+                console.error('Error loading accepted rides:', error);
+            }
+        }
+
+        // Display accepted/active trips in the right column
+        function displayAcceptedRides(trips) {
+            acceptedRides = trips; // Store trips in global variable for modal functions
+            const acceptedList = document.getElementById('acceptedRidesList');
+            document.getElementById('acceptedCount').textContent = trips.length;
+
+            if (!trips || trips.length === 0) {
+                acceptedList.innerHTML = '<div class="text-center py-3 text-[#92adc9] text-xs"><span class="material-symbols-outlined text-2xl block mb-1 opacity-50">inbox</span>No accepted rides yet</div>';
+                return;
+            }
+
+            const currentUserId = AuthService.getCurrentUser()._id;
+            acceptedList.innerHTML = trips.map((trip, index) => {
+                const riderData = trip.riders.find(r => {
+                    const riderIdToCheck = r.riderId && r.riderId._id ? r.riderId._id : r.riderId;
+                    return riderIdToCheck === currentUserId || (typeof riderIdToCheck === 'object' && riderIdToCheck.toString() === currentUserId);
+                });
+                let statusBadgeColor = '';
+                let statusText = '';
+
+                if (riderData.status === 'matched') {
+                    statusBadgeColor = 'bg-yellow-600/30 text-yellow-400';
+                    statusText = 'Pending';
+                } else if (riderData.status === 'confirmed') {
+                    statusBadgeColor = 'bg-green-600/30 text-green-400';
+                    statusText = 'Accepted';
+                } else {
+                    statusBadgeColor = 'bg-blue-600/30 text-blue-400';
+                    statusText = 'Ongoing';
+                }
+
+                return `
+                <div class="bg-gradient-to-br from-[#192633] to-[#151f2a] p-2 rounded-lg border border-green-600/30 hover:border-green-600/60 transition-all">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <div class="size-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0">
+                                ${trip.driver.firstName.charAt(0)}${trip.driver.lastName.charAt(0)}
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-white font-bold text-xs truncate">${trip.driver.firstName} ${trip.driver.lastName}</p>
+                                <p class="text-[10px] text-[#92adc9]">${trip.driver.ratingCount > 0
+                        ? '★ ' + (trip.driver.score10 || trip.driver.rating || '—') + '/10'
+                        : '<span class="text-[9px]">New driver</span>'
+                    }</p>
+                            </div>
+                        </div>
+                        <span class="${statusBadgeColor} px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0">${statusText}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-[10px] text-[#92adc9] mb-1 px-1">
+                        <span>Fare: <span class="text-secondary font-bold">&#x20B9;${riderData.fare || 0}</span></span>
+                    </div>
+                    ${buildRiderEtaHtml(riderData, trip._id)}
+                    <div class="flex gap-1">
+                        <button onclick="showTripDetails('${trip._id}')" class="flex-1 bg-primary/20 hover:bg-primary/30 text-primary text-[9px] font-bold py-1 rounded transition-all">
+                            Details
+                        </button>
+                        ${riderData.status === 'confirmed' ? `
+                        <button onclick="showLiveTracking('${trip._id}', '${trip.driver.firstName}')" class="flex-1 bg-blue-600/30 hover:bg-blue-600/40 text-blue-400 text-[9px] font-bold py-1 rounded transition-all">
+                            Map
+                        </button>
+                        <button onclick="contactDriver('${trip._id}', '${trip.driver.firstName}')" class="flex-1 bg-secondary/20 hover:bg-secondary/30 text-secondary text-[9px] font-bold py-1 rounded transition-all">
+                            Message
+                        </button>` : ''}
+                        <button onclick="cancelTrip('${trip._id}', '${trip.driver.firstName} ${trip.driver.lastName}')" class="flex-1 bg-red-600/30 hover:bg-red-600/40 text-red-400 text-[9px] font-bold py-1 rounded transition-all">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // Tab switching function
+        function switchTab(tab) {
+            const availableTab = document.getElementById('availableTab');
+            const mytripsTab = document.getElementById('mytripsTab');
+            const availableRidesTab = document.getElementById('availableRidesTab');
+            const mytripsRidesTab = document.getElementById('mytripsRidesTab');
+
+            if (tab === 'available') {
+                availableTab.classList.remove('bg-[#233648]', 'text-[#92adc9]', 'hover:bg-[#2d465e]');
+                availableTab.classList.add('bg-primary', 'text-white');
+
+                mytripsTab.classList.remove('bg-primary', 'text-white');
+                mytripsTab.classList.add('bg-[#233648]', 'text-[#92adc9]', 'hover:bg-[#2d465e]');
+
+                availableRidesTab.classList.remove('hidden');
+                mytripsRidesTab.classList.add('hidden');
+            } else {
+                mytripsTab.classList.remove('bg-[#233648]', 'text-[#92adc9]', 'hover:bg-[#2d465e]');
+                mytripsTab.classList.add('bg-primary', 'text-white');
+
+                availableTab.classList.remove('bg-primary', 'text-white');
+                availableTab.classList.add('bg-[#233648]', 'text-[#92adc9]', 'hover:bg-[#2d465e]');
+
+                mytripsRidesTab.classList.remove('hidden');
+                availableRidesTab.classList.add('hidden');
+            }
+        }
+
+        // Show trip details
+        function showTripDetails(tripId) {
+            // Find the trip in the accepted rides
+            const trip = acceptedRides.find(t => t._id === tripId);
+            if (!trip) {
+                showNotification('Trip not found', 'error');
+                return;
+            }
+
+            // DEBUG: Log trip object to see what data we have
+            console.log('[Trip Details] Full trip object:', trip);
+            console.log('[Trip Details] Distance:', trip.distance);
+            console.log('[Trip Details] Route:', trip.route);
+            console.log('[Trip Details] Pickup Location:', trip.pickupLocation);
+            console.log('[Trip Details] Dropoff Location:', trip.dropoffLocation);
+
+            // Get current user ID to find rider data
+            const currentUserId = AuthService.getCurrentUser()._id;
+            const riderData = trip.riders.find(r => {
+                const riderIdToCheck = r.riderId && r.riderId._id ? r.riderId._id : r.riderId;
+                return riderIdToCheck === currentUserId || (typeof riderIdToCheck === 'object' && riderIdToCheck.toString() === currentUserId);
+            });
+
+            // Format the trip details content
+            const pickupLocation = trip.pickupLocation || {};
+            const dropoffLocation = trip.dropoffLocation || {};
+            const tripStatus = trip.status || 'pending';
+            const driverName = trip.driver?.firstName && trip.driver?.lastName ? `${trip.driver.firstName} ${trip.driver.lastName}` : 'Unknown Driver';
+            const fare = riderData?.fare || trip.baseFare || '0';
+
+            let statusBadgeColor = 'bg-yellow-600';
+            if (tripStatus === 'completed') statusBadgeColor = 'bg-green-600';
+            else if (tripStatus === 'cancelled') statusBadgeColor = 'bg-red-600';
+            else if (tripStatus === 'in_progress') statusBadgeColor = 'bg-blue-600';
+
+            document.getElementById('tripDetailsContent').innerHTML = `
+                <div class="space-y-3">
+                    <div class="bg-[#151f2a] p-3 rounded-lg">
+                        <div class="text-[#92adc9] text-sm mb-1">Driver</div>
+                        <div class="text-white font-bold">${driverName}</div>
+                    </div>
+
+                    <div class="bg-[#151f2a] p-3 rounded-lg">
+                        <div class="text-[#92adc9] text-sm mb-1">Vehicle Type</div>
+                        <div class="text-white font-bold capitalize">${trip.driver?.vehicle || 'Not specified'}</div>
+                    </div>
+
+                    <div class="bg-[#151f2a] p-3 rounded-lg">
+                        <div class="text-[#92adc9] text-sm mb-1">Vehicle Number</div>
+                        <div class="text-white font-bold">${trip.driver?.vehicleNumber || 'Not specified'}</div>
+                    </div>
+
+                    <div class="bg-[#151f2a] p-3 rounded-lg">
+                        <div class="text-[#92adc9] text-sm mb-1">Your Fare</div>
+                        <div class="text-secondary font-bold text-lg">₹${fare}</div>
+                    </div>
+
+                    ${(riderData?.eta?.pickupSeconds || riderData?.eta?.tripSeconds) ? `
+                    <div class="bg-gradient-to-r from-blue-950/60 to-emerald-950/40 p-3 rounded-lg border border-emerald-500/30">
+                        <div class="text-[#92adc9] text-xs mb-1 flex items-center justify-between">
+                            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-xs text-emerald-400">directions_car</span> Driver Arrival ETA</span>
+                            <span class="text-[10px] text-gray-400">estimate</span>
+                        </div>
+                        ${riderData.eta.pickupSeconds ? `<div class="text-emerald-400 font-bold text-sm">Driver reaches you in ${formatPickupEta(riderData.eta.pickupSeconds)}</div>` : ''}
+                        ${riderData.eta.tripSeconds ? `<div class="text-xs text-blue-300 mt-1">Trip takes ${formatTripEta(riderData.eta.tripSeconds)}</div>` : ''}
+                    </div>` : ''}
+
+                    <div class="bg-[#151f2a] p-3 rounded-lg">
+                        <div class="text-[#92adc9] text-sm mb-1">Status</div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-white capitalize">${tripStatus.replace('_', ' ')}</span>
+                            <span class="${statusBadgeColor} text-white text-xs px-2 py-1 rounded-full capitalize">${tripStatus.replace('_', ' ')}</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#151f2a] p-3 rounded-lg">
+                        <div class="text-[#92adc9] text-sm mb-1">Distance</div>
+                        <div class="text-white font-bold">${calculateTripDistance(trip)} km</div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('tripDetailsModal').classList.remove('hidden');
+        }
+
+        function closeTripDetailsModal() {
+            document.getElementById('tripDetailsModal').classList.add('hidden');
+        }
+
+        // Contact driver via message
+        function contactDriver(tripId, driverName) {
+            const trip = acceptedRides.find(t => t._id === tripId);
+            if (!trip) {
+                showNotification('Trip not found', 'error');
+                return;
+            }
+
+            // Set the driver name in modal title
+            document.getElementById('messageDriverName').textContent = driverName;
+
+            // Store current trip and driver info for messaging
+            window.currentMessagingTrip = tripId;
+            // Get driver ID from the populated driver object
+            window.currentMessagingDriver = trip.driver && trip.driver._id ? trip.driver._id : trip.driver;
+            window.currentMessagingDriverName = driverName;
+
+            console.log('[DEBUG] Contact Driver - Trip:', tripId, 'Driver:', window.currentMessagingDriver, 'Driver Name:', driverName);
+
+            // Join trip room via socket to receive real-time messages
+            if (window.riderSocket) {
+                window.riderSocket.emit('join-trip-room', { tripId: tripId });
+                console.log('[DEBUG] Rider joined trip room via riderSocket:', tripId);
+            }
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.joinTripRoom(tripId);
+            }
+
+            // Load message history
+            loadMessageHistory(tripId);
+
+            // Open message modal
+            document.getElementById('messageModal').classList.remove('hidden');
+        }
+
+        function closeMessageModal() {
+            document.getElementById('messageModal').classList.add('hidden');
+            document.getElementById('messageInput').value = '';
+            window.currentMessagingTrip = null;
+            window.currentMessagingDriver = null;
+            clearSmartReplyChipsDash();
+        }
+
+        async function loadMessageHistory(tripId) {
+            try {
+                const messagesContainer = document.getElementById('messagesContainer');
+                messagesContainer.innerHTML = '<div class="text-[#92adc9] text-center py-4">Loading messages...</div>';
+
+                // Call API to get messages (uses MessageService with config base URL)
+                const data = await MessageService.getMessages(tripId);
+
+                const messages = data.messages || [];
+
+                if (messages.length === 0) {
+                    messagesContainer.innerHTML = '<div class="text-[#92adc9] text-center py-4">No messages yet. Start a conversation!</div>';
+                } else {
+                    const currentUid = getCurrentUserId();
+                    messagesContainer.innerHTML = messages.map(msg => {
+                        const isSender = (msg.senderId === currentUid || (msg.senderId && (msg.senderId._id === currentUid || msg.senderId.id === currentUid)));
+                        const isFlagged = msg.isFlagged || (window._flaggedMessageIds && window._flaggedMessageIds.has(msg._id));
+                        return `
+                        <div class="mb-3 ${isSender ? 'text-right' : 'text-left'}" data-msg-id="${msg._id}">
+                            <div class="${isSender ? 'bg-primary' : 'bg-[#151f2a]'} inline-block px-3 py-2 rounded-lg max-w-xs text-left">
+                                <div class="text-white text-sm break-words">${msg.messageText}</div>
+                                ${isFlagged ? `
+                                <div class="ai-flag-badge mt-1 flex items-center gap-1 text-[11px] text-red-400 font-medium">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="#ef4444" style="flex-shrink:0;"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>
+                                    <span>Flagged</span>
+                                </div>` : ''}
+                            </div>
+                            <div class="text-[#92adc9] text-xs mt-1">${new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
+                    `;
+                    }).join('');
+
+                    // Re-apply red flags on already-flagged messages
+                    if (window._flaggedMessageIds) {
+                        window._flaggedMessageIds.forEach(id => applyFlagToBubble(id));
+                    }
+
+                    // Scroll to bottom
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+                if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+                    document.getElementById('messagesContainer').innerHTML = '<div class="text-yellow-500 text-center py-4 text-xs">Backend server is not running. Please start the server.</div>';
+                } else {
+                    document.getElementById('messagesContainer').innerHTML = '<div class="text-red-500 text-center py-4">Failed to load messages. Please try again.</div>';
+                }
+            }
+        }
+        window.loadMessageHistory = loadMessageHistory;
+
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+
+            if (!message) {
+                showNotification('Please enter a message', 'warning');
+                return;
+            }
+
+            console.log('[DEBUG] Send Message - Trip:', window.currentMessagingTrip, 'Driver:', window.currentMessagingDriver);
+
+            if (!window.currentMessagingTrip || !window.currentMessagingDriver) {
+                console.error('[ERROR] Missing messaging info - Trip:', window.currentMessagingTrip, 'Driver:', window.currentMessagingDriver);
+                showNotification('Error: Trip information missing. Please close and reopen the message', 'error');
+                return;
+            }
+
+            // Clear smart reply chips when user sends anything
+            clearSmartReplyChipsDash();
+
+            try {
+                // Use MessageService to send (uses config base URL)
+                const response = await MessageService.sendMessage(
+                    window.currentMessagingTrip,
+                    window.currentMessagingDriver,
+                    message
+                );
+
+                // Clear input and reload messages silently (no popup spam on normal send)
+                messageInput.value = '';
+                await loadMessageHistory(window.currentMessagingTrip);
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showNotification('Error sending message', 'error');
+            }
+        }
+
+        // ── Smart Reply Chip helpers (Dashboard / rider side) ─────────────────
+        function showSmartReplyChipsDash(messageId, suggestions) {
+            const container = document.getElementById('smartReplyChipsDash');
+            if (!container) return;
+            if (!Array.isArray(suggestions) || suggestions.length === 0) {
+                clearSmartReplyChipsDash();
+                return;
+            }
+            // Use data-reply-idx to avoid double-quote clash with onclick
+            container.innerHTML = suggestions.map((s, i) =>
+                `<button type="button" data-reply-idx="${i}"
+                    style="background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:9999px;padding:6px 14px;font-size:13px;cursor:pointer;white-space:nowrap;transition:all 0.15s;font-weight:500;"
+                    onmouseover="this.style.background='#1e4a7a';this.style.transform='scale(1.03)'"
+                    onmouseout="this.style.background='#1e3a5f';this.style.transform='scale(1)'">${s.text}</button>`
+            ).join('');
+            // Store texts to avoid all quoting issues
+            container._srTexts = suggestions.map(s => s.text);
+            container.onclick = function (e) {
+                const btn = e.target.closest('[data-reply-idx]');
+                if (!btn) return;
+                const text = container._srTexts[parseInt(btn.dataset.replyIdx)];
+                if (text) _sendSmartReplyDash(text);
+            };
+            container.classList.remove('hidden');
+        }
+
+        function clearSmartReplyChipsDash() {
+            const container = document.getElementById('smartReplyChipsDash');
+            if (container) {
+                container._srTexts = [];
+                container.onclick = null;
+                container.innerHTML = '';
+                container.classList.add('hidden');
+            }
+        }
+
+        // Immediately sends the chip reply without touching the input box
+        async function _sendSmartReplyDash(text) {
+            clearSmartReplyChipsDash();
+            if (!window.currentMessagingTrip || !window.currentMessagingDriver) return;
+            try {
+                await MessageService.sendMessage(window.currentMessagingTrip, window.currentMessagingDriver, text);
+                await loadMessageHistory(window.currentMessagingTrip);
+            } catch (e) {
+                showNotification('Error sending reply', 'error');
+            }
+        }
+
+        // Expose as window globals so notification-manager.js can call them
+        window.showSmartReplyChips = showSmartReplyChipsDash;
+        window.clearSmartReplyChips = clearSmartReplyChipsDash;
+
+        // Add a red flag badge to a specific message bubble by message ID
+        function applyFlagToBubble(msgId) {
+            if (!msgId) return;
+            if (!window._flaggedMessageIds) window._flaggedMessageIds = new Set();
+            window._flaggedMessageIds.add(msgId);
+
+            const bubble = document.querySelector(`[data-msg-id="${msgId}"]`);
+            if (bubble && !bubble.querySelector('.ai-flag-badge')) {
+                const innerDiv = bubble.querySelector('.max-w-xs');
+                if (innerDiv) {
+                    const badge = document.createElement('div');
+                    badge.className = 'ai-flag-badge mt-1 flex items-center gap-1 text-[11px] text-red-400 font-medium';
+                    badge.title = 'Flagged by AI moderation';
+                    badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#ef4444" style="flex-shrink:0;"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg> <span>Flagged</span>`;
+                    innerDiv.appendChild(badge);
+                }
+            }
+        }
+
+        // Show AI moderation warning to the sender (single non-spammy toast + red flag on bubble)
+        function showModerationWarning(data) {
+            // Guard: only show once per message ID
+            if (!window._flaggedMessageIds) window._flaggedMessageIds = new Set();
+            if (data && data.messageId) {
+                if (window._flaggedMessageIds.has(data.messageId)) {
+                    applyFlagToBubble(data.messageId);
+                    return;
+                }
+                window._flaggedMessageIds.add(data.messageId);
+                applyFlagToBubble(data.messageId);
+            }
+
+            console.log('[MODERATION] Showing warning for message:', data ? data.messageId : 'unknown');
+
+            // If a moderation toast is already active on screen, don't create multiple popups
+            const existingToast = document.getElementById('aiModerationToast');
+            if (existingToast) {
+                if (window._modToastTimer) clearTimeout(window._modToastTimer);
+                window._modToastTimer = setTimeout(() => {
+                    if (existingToast.parentElement) existingToast.remove();
+                }, 4000);
+                return;
+            }
+
+            // One clean toast (top-right corner)
+            const container = document.getElementById('notificationContainer') || (() => {
+                const el = document.createElement('div');
+                el.id = 'notificationContainer';
+                el.className = 'fixed top-24 right-4 space-y-2 z-50';
+                document.body.appendChild(el);
+                return el;
+            })();
+
+            const toast = document.createElement('div');
+            toast.id = 'aiModerationToast';
+            toast.style.cssText = 'background:#dc2626;color:white;padding:12px 16px;border-radius:12px;box-shadow:0 4px 20px rgba(220,38,38,0.4);display:flex;align-items:center;gap:10px;max-width:320px;z-index:9999;transition:all 0.3s ease;margin-bottom:8px;';
+            toast.innerHTML = `
+                <span style="font-size:16px;line-height:1;flex-shrink:0;">⚠️</span>
+                <span style="font-size:12px;line-height:1.4;"><strong>AI Safety Warning:</strong> Your message was flagged for potentially violating guidelines.</span>
+                <button type="button" onclick="document.getElementById('aiModerationToast')?.remove()" style="background:none;border:none;color:white;cursor:pointer;font-size:14px;margin-left:auto;padding:2px 6px;opacity:0.8;">✕</button>
+            `;
+            container.appendChild(toast);
+
+            if (window._modToastTimer) clearTimeout(window._modToastTimer);
+            window._modToastTimer = setTimeout(() => {
+                if (toast.parentElement) toast.remove();
+            }, 4000);
+        }
+
+        function getCurrentUserId() {
+            // Get user ID from stored user data or token
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+                try {
+                    const user = JSON.parse(userStr);
+                    return user._id || user.id;
+                } catch (e) {
+                    console.error('Error parsing user:', e);
+                }
+            }
+            return null;
+        }
+
+        function showLiveTracking(tripId, driverName) {
+            // Find the trip
+            const trip = acceptedRides.find(t => t._id === tripId);
+            if (!trip) {
+                showNotification('Trip not found', 'error');
+                return;
+            }
+
+            // Get coordinates - START WITH DRIVER'S CURRENT LOCATION
+            let driverLat = null, driverLng = null;
+            let pickupLat = null, pickupLng = null, destLat = null, destLng = null;
+
+            // Get driver's current location from trip's currentLocation or from stored locations
+            if (trip.driver && trip.driver.currentLocation && trip.driver.currentLocation.coordinates) {
+                driverLng = trip.driver.currentLocation.coordinates[0];
+                driverLat = trip.driver.currentLocation.coordinates[1];
+            } else if (window.driverLocations && window.driverLocations[tripId]) {
+                driverLat = window.driverLocations[tripId].lat;
+                driverLng = window.driverLocations[tripId].lng;
+            }
+
+            // Fallback to pickup location if driver location not available
+            if (driverLat === null || driverLng === null) {
+                driverLat = trip.pickupLocation?.coordinates?.[1] || 30.836427;
+                driverLng = trip.pickupLocation?.coordinates?.[0] || 76.960320;
+            }
+
+            // Extract rider's pickup point (where driver picks up the rider)
+            // This comes from the rider's data in the trip
+            if (trip.riders && trip.riders.length > 0) {
+                const riderData = trip.riders[0];
+
+                // Try to get rider's pickup location
+                if (riderData.pickupPoint) {
+                    if (typeof riderData.pickupPoint === 'string') {
+                        try {
+                            const coords = JSON.parse(riderData.pickupPoint);
+                            pickupLat = coords.lat;
+                            pickupLng = coords.lng;
+                        } catch (e) {
+                            // Parsing failed, skip
+                        }
+                    } else if (riderData.pickupPoint.coordinates && Array.isArray(riderData.pickupPoint.coordinates)) {
+                        pickupLng = riderData.pickupPoint.coordinates[0];
+                        pickupLat = riderData.pickupPoint.coordinates[1];
+                    } else if (riderData.pickupPoint.coordinates?.coordinates && Array.isArray(riderData.pickupPoint.coordinates.coordinates)) {
+                        pickupLng = riderData.pickupPoint.coordinates.coordinates[0];
+                        pickupLat = riderData.pickupPoint.coordinates.coordinates[1];
+                    } else if (riderData.pickupPoint.lat && riderData.pickupPoint.lng) {
+                        pickupLat = riderData.pickupPoint.lat;
+                        pickupLng = riderData.pickupPoint.lng;
+                    }
+                }
+
+                // Try to get rider's destination (dropoff location)
+                if (destLat === null && (riderData.dropoffLocation || riderData.dropoffPoint)) {
+                    const dropoffData = riderData.dropoffLocation || riderData.dropoffPoint;
+                    if (typeof dropoffData === 'string') {
+                        try {
+                            const coords = JSON.parse(dropoffData);
+                            destLat = coords.lat;
+                            destLng = coords.lng;
+                        } catch (e) {
+                            // Parsing failed, skip
+                        }
+                    } else if (dropoffData.coordinates && Array.isArray(dropoffData.coordinates)) {
+                        destLng = dropoffData.coordinates[0];
+                        destLat = dropoffData.coordinates[1];
+                    } else if (dropoffData.coordinates?.coordinates && Array.isArray(dropoffData.coordinates.coordinates)) {
+                        destLng = dropoffData.coordinates.coordinates[0];
+                        destLat = dropoffData.coordinates.coordinates[1];
+                    } else if (dropoffData.lat && dropoffData.lng) {
+                        destLat = dropoffData.lat;
+                        destLng = dropoffData.lng;
+                    }
+                }
+            }
+
+            // Fallback: Try to extract from trip level fields if rider data doesn't have it
+            if (pickupLat === null && trip.pickupLocation?.coordinates && Array.isArray(trip.pickupLocation.coordinates)) {
+                pickupLng = trip.pickupLocation.coordinates[0];
+                pickupLat = trip.pickupLocation.coordinates[1];
+            } else if (pickupLat === null && trip.pickupLocation?.coordinates?.coordinates && Array.isArray(trip.pickupLocation.coordinates.coordinates)) {
+                pickupLng = trip.pickupLocation.coordinates.coordinates[0];
+                pickupLat = trip.pickupLocation.coordinates.coordinates[1];
+            }
+
+            if (destLat === null && trip.dropoffLocation?.coordinates && Array.isArray(trip.dropoffLocation.coordinates)) {
+                destLng = trip.dropoffLocation.coordinates[0];
+                destLat = trip.dropoffLocation.coordinates[1];
+            } else if (destLat === null && trip.dropoffLocation?.coordinates?.coordinates && Array.isArray(trip.dropoffLocation.coordinates.coordinates)) {
+                destLng = trip.dropoffLocation.coordinates.coordinates[0];
+                destLat = trip.dropoffLocation.coordinates.coordinates[1];
+            }
+
+            // Create tracking modal if it doesn't exist
+            if (!document.getElementById('liveTrackingModal')) {
+                const trackingModal = document.createElement('div');
+                trackingModal.id = 'liveTrackingModal';
+                trackingModal.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center';
+                trackingModal.style.zIndex = '9999';
+                trackingModal.innerHTML = `
+                    <div class="bg-[#192633] rounded-2xl p-6 max-w-2xl w-full mx-4 border border-[#233648] max-h-[90vh] overflow-y-auto">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-bold text-white">📍 Live Tracking - ${driverName}</h3>
+                            <button onclick="closeLiveTracking()" class="text-[#92adc9] hover:text-white">
+                                <span class="material-symbols-outlined text-2xl">close</span>
+                            </button>
+                        </div>
+                        <div id="liveMapContainer" style="height: 500px; border-radius: 12px; overflow: hidden; border: 1px solid #233648;"></div>
+                        <div class="mt-4 flex gap-3">
+                            <div class="flex-1 bg-[#151f2a] p-3 rounded-lg text-center">
+                                <div class="text-[#92adc9] text-xs mb-1">Driver Status</div>
+                                <div class="text-green-400 font-bold">🟢 Live</div>
+                            </div>
+                            <div class="flex-1 bg-[#151f2a] p-3 rounded-lg text-center">
+                                <div class="text-[#92adc9] text-xs mb-1">Distance to Driver</div>
+                                <div id="distanceToDriver" class="text-primary font-bold">Calculating...</div>
+                            </div>
+                        </div>
+                        <button onclick="closeLiveTracking()" class="w-full mt-4 bg-[#233648] hover:bg-[#2d465e] text-white py-2 rounded-xl font-bold transition-colors">
+                            Close
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(trackingModal);
+            }
+
+            const modal = document.getElementById('liveTrackingModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+            }
+
+            // Initialize map
+            setTimeout(async () => {
+                // Clear and remove old map instance
+                if (window.liveTrackingMap) {
+                    window.liveTrackingMap.remove();
+                    window.liveTrackingMap = null;
+                }
+
+                // Clear the container
+                const mapContainer = document.getElementById('liveMapContainer');
+                if (mapContainer) {
+                    mapContainer.innerHTML = '';
+                }
+
+                // Center between rider and driver
+                const centerLat = (driverLat + (pickupLat || driverLat)) / 2;
+                const centerLng = (driverLng + (pickupLng || driverLng)) / 2;
+
+                window.liveTrackingMap = L.map('liveMapContainer').setView([centerLat, centerLng], 13);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap',
+                    maxZoom: 19,
+                    keepBuffer: 6,
+                    crossOrigin: true
+                }).addTo(window.liveTrackingMap);
+
+                // Add driver marker (green - live)
+                window.driverMarker = L.marker([driverLat, driverLng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(window.liveTrackingMap).bindPopup('<div class="font-bold">🚗 Driver<br/>Live Location</div>').openPopup();
+
+                // Add pickup marker (blue)
+                if (pickupLat !== null && pickupLng !== null) {
+                    L.marker([pickupLat, pickupLng], {
+                        icon: L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
+                        })
+                    }).addTo(window.liveTrackingMap).bindPopup('<div class="font-bold">📍 Your Pickup Point</div>');
+                }
+
+                // Add destination marker (red)
+                if (destLat !== null && destLng !== null) {
+                    L.marker([destLat, destLng], {
+                        icon: L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
+                        })
+                    }).addTo(window.liveTrackingMap).bindPopup('<div class="font-bold">🏁 Destination</div>');
+                }
+
+                // Draw route using OSRM instead of straight line
+                const routePoints = [];
+                if (pickupLat !== null && pickupLng !== null) routePoints.push({ lat: pickupLat, lng: pickupLng });
+                if (destLat !== null && destLng !== null) routePoints.push({ lat: destLat, lng: destLng });
+
+                if (routePoints.length === 2) {
+                    try {
+                        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${routePoints[0].lng},${routePoints[0].lat};${routePoints[1].lng},${routePoints[1].lat}?overview=full&geometries=geojson`;
+                        const routeResp = await fetch(osrmUrl);
+                        const routeData = await routeResp.json();
+                        if (routeData.code === 'Ok' && routeData.routes && routeData.routes.length > 0) {
+                            const coords = routeData.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                            const routeLine = L.polyline(coords, {
+                                color: '#3B8BEB', weight: 4, opacity: 0.85, smoothFactor: 1,
+                                lineCap: 'round', lineJoin: 'round'
+                            }).addTo(window.liveTrackingMap);
+                            window.liveTrackingMap.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+                        } else {
+                            // Fallback straight line
+                            L.polyline([[routePoints[0].lat, routePoints[0].lng], [routePoints[1].lat, routePoints[1].lng]], {
+                                color: '#3B8BEB', weight: 3, dashArray: '8, 6', opacity: 0.7
+                            }).addTo(window.liveTrackingMap);
+                        }
+                    } catch (routeErr) {
+                        console.warn('[MAP] OSRM failed, using straight line:', routeErr.message);
+                        L.polyline([[routePoints[0].lat, routePoints[0].lng], [routePoints[1].lat, routePoints[1].lng]], {
+                            color: '#3B8BEB', weight: 3, dashArray: '8, 6', opacity: 0.7
+                        }).addTo(window.liveTrackingMap);
+                    }
+                } else if (routePoints.length === 1) {
+                    // Just driver + one point
+                    L.polyline([[driverLat, driverLng], [routePoints[0].lat, routePoints[0].lng]], {
+                        color: 'green', weight: 2, dashArray: '5, 5', opacity: 0.7
+                    }).addTo(window.liveTrackingMap);
+                }
+
+                // Fit all markers in view
+                const allPoints = [[driverLat, driverLng]];
+                routePoints.forEach(p => allPoints.push([p.lat, p.lng]));
+                if (allPoints.length > 1) {
+                    window.liveTrackingMap.fitBounds(allPoints, { padding: [40, 40] });
+                }
+
+                // Calculate and display distance to driver
+                if (pickupLat !== null && pickupLng !== null) {
+                    const distToDriver = calculateDistance(driverLat, driverLng, pickupLat, pickupLng);
+                    document.getElementById('distanceToDriver').textContent = `${distToDriver.toFixed(1)} km away`;
+                } else {
+                    document.getElementById('distanceToDriver').textContent = 'Pickup location not set';
+                }
+
+                // Store current trip ID for live tracking
+                window.currentTrackingTripId = tripId;
+
+                // Listen for real-time driver location updates with fallback polling
+                const updateDriverMarker = async () => {
+                    let newLocation = null;
+                    let updateSource = 'unknown';
+
+                    // PRIMARY: Check socket.io received location (real-time from backend)
+                    if (window.driverLocations && window.driverLocations[tripId]) {
+                        newLocation = window.driverLocations[tripId];
+                        updateSource = 'socket.io';
+                        console.log('[LOCATION] Driver location from socket.io:', newLocation);
+                    }
+                    // FALLBACK: Fetch from backend API if socket data is stale/missing
+                    else {
+                        try {
+                            const tripResponse = await TripServiceAPI.getTripDetails(tripId);
+                            if (tripResponse && tripResponse.trip && tripResponse.trip.driver && tripResponse.trip.driver.currentLocation) {
+                                const coords = tripResponse.trip.driver.currentLocation.coordinates;
+                                newLocation = {
+                                    lat: coords[1],
+                                    lng: coords[0],
+                                    timestamp: new Date().getTime()
+                                };
+                                updateSource = 'backend-api';
+                                console.log('[LOCATION] Driver location from backend API:', newLocation);
+                                // Cache it for next time
+                                if (!window.driverLocations) window.driverLocations = {};
+                                window.driverLocations[tripId] = newLocation;
+                            }
+                        } catch (error) {
+                            console.warn('[LOCATION] Error fetching from API:', error);
+                        }
+                    }
+
+                    // Update UI if we have a location
+                    if (newLocation && newLocation.lat && newLocation.lng) {
+                        // Don't pan the map on every update - just update the marker position
+                        // This keeps the map stationary while the marker moves smoothly
+                        if (window.driverMarker) {
+                            window.driverMarker.setLatLng([newLocation.lat, newLocation.lng]);
+                        }
+
+                        // Update distance
+                        if (pickupLat !== null && pickupLng !== null) {
+                            const distToDriver = calculateDistance(newLocation.lat, newLocation.lng, pickupLat, pickupLng);
+                            const distanceElement = document.getElementById('distanceToDriver');
+                            if (distanceElement) {
+                                distanceElement.textContent = `${distToDriver.toFixed(1)} km away`;
+                            }
+                        }
+
+                        console.log('[LOCATION] Driver marker updated from', updateSource);
+                    } else {
+                        console.log('[LOCATION] No location available (socket.io or API)');
+                    }
+                };
+
+                // Check for updates every 1 second (faster than 2 seconds)
+                // Combined approach: socket.io for real-time, API fallback for reliability
+                window.liveTrackingInterval = setInterval(updateDriverMarker, 1000);
+
+                // Store the update function for cleanup
+                window.liveTrackingUpdateFunc = updateDriverMarker;
+            }, 100);
+        }
+
+        function closeLiveTracking() {
+            const modal = document.getElementById('liveTrackingModal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            if (window.liveTrackingInterval) {
+                clearInterval(window.liveTrackingInterval);
+            }
+            if (window.liveTrackingMap) {
+                window.liveTrackingMap.remove();
+                window.liveTrackingMap = null;
+            }
+        }
+
+        function resetJoinRideState() {
+            const btn = document.getElementById('joinRideConfirmBtn');
+            const btnTxt = document.getElementById('joinRideBtnText');
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+            if (btnTxt) {
+                btnTxt.innerHTML = 'Send Request';
+            }
+            if (selectedRideForJoin) {
+                const cardBtn = document.getElementById(`cardJoinBtn_${selectedRideForJoin}`);
+                if (cardBtn) {
+                    cardBtn.disabled = false;
+                    cardBtn.innerHTML = 'Request to Join';
+                }
+            }
+        }
+
+        function openJoinRideModal(rideId, driverName, fare, availableSeats, occupiedSeats, matchScore, estimatedDistance, ratePerKm) {
+            selectedRideForJoin = rideId;
+            currentRideFare = fare; // Store the fare for this ride
+
+            // Ensure button is in default active state (never stuck in loading/spinner)
+            resetJoinRideState();
+
+            // Default values if not provided
+            estimatedDistance = estimatedDistance || 0;
+            ratePerKm = ratePerKm || 30;
+
+            document.getElementById('joinRideContent').innerHTML = `
+                <div class="bg-[#151f2a] p-3 rounded-xl space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Driver:</span>
+                        <span class="text-white font-bold">${driverName}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Match Score:</span>
+                        <span class="text-primary font-bold">${matchScore}%</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Trip Distance:</span>
+                        <span class="text-white font-bold">${estimatedDistance.toFixed(1)} km</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">${estimatedDistance.toFixed(1)} km × ₹${ratePerKm}/km</span>
+                        <span class="text-secondary font-bold text-lg">₹${fare}</span>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('joinRideModal').classList.remove('hidden');
+        }
+
+        function closeJoinModal() {
+            resetJoinRideState();
+            document.getElementById('joinRideModal').classList.add('hidden');
+            selectedRideForJoin = null;
+        }
+
+        async function confirmJoinRide() {
+            const btn = document.getElementById('joinRideConfirmBtn');
+            const btnTxt = document.getElementById('joinRideBtnText');
+            const currentRideId = selectedRideForJoin;
+            const cardBtn = currentRideId ? document.getElementById(`cardJoinBtn_${currentRideId}`) : null;
+
+            // ── Loading state ──
+            const setLoading = (loading) => {
+                if (btn) {
+                    btn.disabled = loading;
+                    btn.classList.toggle('opacity-70', loading);
+                    btn.classList.toggle('cursor-not-allowed', loading);
+                }
+                if (btnTxt) {
+                    btnTxt.innerHTML = loading
+                        ? '<svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg> Sending...'
+                        : 'Send Request';
+                }
+                if (cardBtn) {
+                    cardBtn.disabled = loading;
+                    cardBtn.innerHTML = loading
+                        ? '<span class="inline-flex items-center gap-2 justify-center"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg> Sending...</span>'
+                        : 'Request to Join';
+                }
+            };
+
+            try {
+                if (!selectedRideForJoin) {
+                    showNotification('Error: Ride not selected', 'error');
+                    return;
+                }
+
+                // Use pickupLocation (rider's desired pickup point), fallback to current location
+                const pickupPoint = pickupLocation || userLocation;
+                if (!pickupPoint) {
+                    showNotification('Please set a pickup location', 'error');
+                    return;
+                }
+
+                setLoading(true);
+                console.log('[DEBUG] Joining trip with pickup:', pickupPoint, 'destination:', destinationLocation);
+
+                const response = await TripServiceAPI.joinTrip(
+                    selectedRideForJoin,
+                    [pickupPoint.lng, pickupPoint.lat],
+                    [destinationLocation.lng, destinationLocation.lat],
+                    currentRideFare
+                );
+
+                if (response && response.success) {
+                    showNotification('✓ Request sent! Waiting for driver approval...', 'success');
+
+                    // **FIX: Join Socket.io trip room to receive real-time location updates**
+                    console.log('[DEBUG] Rider joining trip room:', selectedRideForJoin);
+                    if (NotificationManager && NotificationManager.joinTripRoom) {
+                        NotificationManager.joinTripRoom(selectedRideForJoin);
+                        console.log('[DEBUG] Rider successfully joined trip room for location updates');
+                    }
+
+                    closeJoinModal();
+                    await loadAcceptedRides(); // Refresh accepted rides list
+                    setTimeout(() => {
+                        searchRides();
+                    }, 2000);
+                } else {
+                    showNotification('Error joining ride', 'error');
+                }
+            } catch (error) {
+                console.error('Error joining ride:', error);
+                showNotification('Error joining ride', 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function calculateTripDistance(trip) {
+            try {
+                console.log('[Distance] Starting calculation for trip:', trip._id);
+
+                // First check if trip has distance field
+                if (trip.distance) {
+                    console.log('[Distance] Using trip.distance:', trip.distance);
+                    return trip.distance.toFixed(2);
+                }
+
+                // Check if trip has route data with distance
+                if (trip.route && Array.isArray(trip.route) && trip.route.length > 0) {
+                    console.log('[Distance] Calculating from route points...');
+                    let totalDistance = 0;
+                    for (let i = 0; i < trip.route.length - 1; i++) {
+                        const point1 = trip.route[i];
+                        const point2 = trip.route[i + 1];
+                        if (point1.lat && point1.lng && point2.lat && point2.lng) {
+                            totalDistance += calculateDistance(point1.lat, point1.lng, point2.lat, point2.lng);
+                        }
+                    }
+                    if (totalDistance > 0) {
+                        console.log('[Distance] Calculated from route:', totalDistance.toFixed(2));
+                        return totalDistance.toFixed(2);
+                    }
+                }
+
+                // Calculate from coordinates if available
+                let pickupLat, pickupLng, dropoffLat, dropoffLng;
+
+                // Extract pickup coordinates - handle GeoJSON format
+                if (trip.pickupLocation?.coordinates) {
+                    console.log('[Distance] Pickup coordinates raw:', trip.pickupLocation.coordinates);
+                    // GeoJSON format: {type: 'Point', coordinates: [lng, lat]}
+                    if (trip.pickupLocation.coordinates.coordinates && Array.isArray(trip.pickupLocation.coordinates.coordinates)) {
+                        pickupLng = trip.pickupLocation.coordinates.coordinates[0];
+                        pickupLat = trip.pickupLocation.coordinates.coordinates[1];
+                    } else if (Array.isArray(trip.pickupLocation.coordinates)) {
+                        // Direct array format: [lng, lat]
+                        pickupLng = trip.pickupLocation.coordinates[0];
+                        pickupLat = trip.pickupLocation.coordinates[1];
+                    } else if (typeof trip.pickupLocation.coordinates === 'object') {
+                        // Object format: {lng: value, lat: value} or {longitude, latitude}
+                        pickupLng = trip.pickupLocation.coordinates.lng || trip.pickupLocation.coordinates.longitude;
+                        pickupLat = trip.pickupLocation.coordinates.lat || trip.pickupLocation.coordinates.latitude;
+                    }
+                    console.log('[Distance] Extracted pickup - lat:', pickupLat, 'lng:', pickupLng);
+                }
+
+                // Extract dropoff coordinates - handle GeoJSON format
+                if (trip.dropoffLocation?.coordinates) {
+                    console.log('[Distance] Dropoff coordinates raw:', trip.dropoffLocation.coordinates);
+                    // GeoJSON format: {type: 'Point', coordinates: [lng, lat]}
+                    if (trip.dropoffLocation.coordinates.coordinates && Array.isArray(trip.dropoffLocation.coordinates.coordinates)) {
+                        dropoffLng = trip.dropoffLocation.coordinates.coordinates[0];
+                        dropoffLat = trip.dropoffLocation.coordinates.coordinates[1];
+                    } else if (Array.isArray(trip.dropoffLocation.coordinates)) {
+                        // Direct array format: [lng, lat]
+                        dropoffLng = trip.dropoffLocation.coordinates[0];
+                        dropoffLat = trip.dropoffLocation.coordinates[1];
+                    } else if (typeof trip.dropoffLocation.coordinates === 'object') {
+                        // Object format: {lng: value, lat: value} or {longitude, latitude}
+                        dropoffLng = trip.dropoffLocation.coordinates.lng || trip.dropoffLocation.coordinates.longitude;
+                        dropoffLat = trip.dropoffLocation.coordinates.lat || trip.dropoffLocation.coordinates.latitude;
+                    }
+                    console.log('[Distance] Extracted dropoff - lat:', dropoffLat, 'lng:', dropoffLng);
+                }
+
+                // Calculate distance if we have both coordinates
+                if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+                    const dist = calculateDistance(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(2);
+                    console.log(`[Distance] ✅ Calculated: ${dist} km from coordinates`);
+                    return dist;
+                }
+
+                console.warn('[Distance] ❌ Missing coordinates - pickup:', { pickupLat, pickupLng }, 'dropoff:', { dropoffLat, dropoffLng });
+                return '0';
+            } catch (error) {
+                console.error('Error calculating trip distance:', error);
+                return '0';
+            }
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = ((lat2 - lat1) * Math.PI) / 180;
+            const dLon = ((lon2 - lon1) * Math.PI) / 180;
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos((lat1 * Math.PI) / 180) *
+                Math.cos((lat2 * Math.PI) / 180) *
+                Math.sin(dLon / 2) *
+                Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function checkActiveTrip() {
+            const activeTrip = localStorage.getItem('activeTrip');
+            if (activeTrip) {
+                showNotification('You have an active trip! Go to Offer a Ride to view it.', 'info');
+            }
+        }
+
+        function refreshMap() {
+            initializeMap();
+            showNotification('✓ Map refreshed', 'success');
+        }
+
+        function zoomIn() {
+            if (dashboardMap) dashboardMap.zoomIn();
+        }
+
+        function zoomOut() {
+            if (dashboardMap) dashboardMap.zoomOut();
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                AuthService.logout();
+            }
+        }
+
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+
+            const bgColor = {
+                'success': 'bg-secondary',
+                'error': 'bg-red-600',
+                'info': 'bg-primary',
+                'warning': 'bg-yellow-600'
+            }[type] || 'bg-gray-600';
+
+            notification.className = `${bgColor} text-white p-4 rounded-lg shadow-lg max-w-sm flex items-center justify-between gap-3`;
+            notification.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[20px]">${type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info'}</span>
+                    <span>${message}</span>
+                </div>
+                <button onclick="this.parentElement.remove()" class="flex-shrink-0 p-1 hover:bg-black/10 rounded transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">close</span>
+                </button>
+            `;
+
+            container.appendChild(notification);
+
+            setTimeout(() => {
+                if (notification.parentElement) notification.remove();
+            }, 5000);
+        }
+
+        // Show driver details modal
+        function showDriverDetails(rideId, firstName, lastName, rating, vehicle, vehicleColor, vehicleNumber) {
+            const driverDetailsContent = document.getElementById('driverDetailsContent');
+            driverDetailsContent.innerHTML = `
+                <div class="bg-[#151f2a] p-4 rounded-xl space-y-3">
+                    <div class="flex items-center justify-center mb-4">
+                        <div class="size-16 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-2xl">
+                            ${firstName.charAt(0)}${lastName.charAt(0)}
+                        </div>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Name:</span>
+                        <span class="text-white font-bold">${firstName} ${lastName}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Rating:</span>
+                        <div class="flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[14px] text-yellow-400">star</span>
+                            <span class="text-white font-bold">${rating}</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Vehicle:</span>
+                        <span class="text-white font-bold">${vehicle}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Vehicle Color:</span>
+                        <span class="text-white font-bold">${vehicleColor}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-[#92adc9]">Vehicle Number:</span>
+                        <span class="text-white font-bold">${vehicleNumber}</span>
+                    </div>
+                </div>
+            `;
+            document.getElementById('driverDetailsModal').classList.remove('hidden');
+        }
+
+        function closeDriverDetailsModal() {
+            document.getElementById('driverDetailsModal').classList.add('hidden');
+        }
+
+        // Show driver location on map
+        function showDriverLocation(rideId, driverLat, driverLng) {
+            const mapElement = document.getElementById('driverLocationMap');
+            mapElement.innerHTML = ''; // Clear previous map
+
+            // Initialize Leaflet map
+            const driverLocationMap = L.map(mapElement).setView([driverLat, driverLng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19,
+                keepBuffer: 6,
+                crossOrigin: true
+            }).addTo(driverLocationMap);
+
+            // Add driver marker
+            const driverMarker = L.marker([driverLat, driverLng], {
+                icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(driverLocationMap);
+
+            driverMarker.bindPopup('<strong>Driver Location</strong>').openPopup();
+
+            // Add rider location if available
+            if (userLocation && userLocation.lat && userLocation.lng) {
+                const riderMarker = L.marker([userLocation.lat, userLocation.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(driverLocationMap);
+
+                riderMarker.bindPopup('<strong>Your Location</strong>');
+            }
+
+            // Fit bounds to show both markers
+            setTimeout(() => {
+                driverLocationMap.invalidateSize();
+            }, 100);
+
+            document.getElementById('driverLocationModal').classList.remove('hidden');
+        }
+
+        function closeDriverLocationModal() {
+            document.getElementById('driverLocationModal').classList.add('hidden');
+        }
+
+        // Cancel join request
+        async function cancelJoinRequest(rideId) {
+            if (!confirm('Are you sure you want to cancel this request?')) {
+                return;
+            }
+
+            try {
+                const response = await apiClient.delete(`/trips/${rideId}/cancel-rider`, {
+                    riderId: AuthService.getCurrentUser()._id
+                });
+
+                if (response && response.success) {
+                    showNotification('✓ Request cancelled successfully', 'success');
+                    await loadAcceptedRides(); // Refresh accepted rides
+                    setTimeout(() => {
+                        searchRides();
+                    }, 1500);
+                } else {
+                    showNotification('Error cancelling request', 'error');
+                }
+            } catch (error) {
+                console.error('Error cancelling request:', error);
+                showNotification('Error cancelling request', 'error');
+            }
+        }
+
+        // Cancel active trip (removes rider from trip)
+        async function cancelTrip(tripId, driverName) {
+            if (!confirm('Are you sure you want to cancel this trip?')) {
+                return;
+            }
+
+            try {
+                const currentUserId = AuthService.getCurrentUser()._id;
+                const response = await apiClient.delete(`/trips/${tripId}/cancel-rider`, {
+                    riderId: currentUserId
+                });
+
+                if (response && response.success) {
+                    showNotification('✓ Trip cancelled successfully', 'success');
+
+                    // Emit socket event to notify driver in real-time
+                    if (window.riderSocket) {
+                        window.riderSocket.emit('rider-cancelled-trip', {
+                            tripId: tripId,
+                            riderId: currentUserId,
+                            driverName: driverName
+                        });
+                    }
+
+                    // Reload trips after a brief delay
+                    setTimeout(async () => {
+                        await loadAcceptedRides();
+                        searchRides(); // Refresh available rides
+                    }, 500);
+                } else {
+                    showNotification('Error cancelling trip', 'error');
+                }
+            } catch (error) {
+                console.error('Error cancelling trip:', error);
+                showNotification('Error cancelling trip', 'error');
+            }
+        }
+
+        // ── ETA helpers ────────────────────────────────────────────────────────
+
+        /**
+         * Convert seconds for driver pickup arrival.
+         * Only pickup line may return 'arriving now' (when under 60 s).
+         * @param {number|null} seconds
+         * @returns {string|null}
+         */
+        function formatPickupEta(seconds) {
+            if (seconds === null || seconds === undefined || isNaN(seconds)) return null;
+            if (seconds < 60) return 'arriving now';
+            const mins = Math.max(1, Math.round(seconds / 60));
+            return `about ${mins} min`;
+        }
+
+        /**
+         * Convert seconds for trip duration.
+         * NEVER returns 'arriving now'.
+         * When under 60 s, returns 'less than 1 min'.
+         * Otherwise returns 'about Y min' (rounded, min 1 min).
+         * @param {number|null} seconds
+         * @returns {string|null}
+         */
+        function formatTripEta(seconds) {
+            if (seconds === null || seconds === undefined || isNaN(seconds)) return null;
+            if (seconds < 60) return 'less than 1 min';
+            const mins = Math.max(1, Math.round(seconds / 60));
+            return `about ${mins} min`;
+        }
+
+        /**
+         * Backward-compatibility wrapper for any other callers
+         */
+        function formatEtaMinutes(seconds) {
+            return formatPickupEta(seconds);
+        }
+
+        /**
+         * Build the ETA HTML block for one rider card.
+         * For confirmed rides, always renders a container (#eta-block-${tripId}) so that
+         * real-time socket updates can immediately populate it.
+         * @param {object} riderData  — the rider sub-document from the trip
+         * @param {string} tripId
+         * @returns {string} HTML
+         */
+        function buildRiderEtaHtml(riderData, tripId) {
+            // Only show ETA on confirmed rides (driver already accepted)
+            if (!riderData || riderData.status !== 'confirmed') return '';
+
+            const eta = riderData.eta;
+            const pickupStr = eta ? formatPickupEta(eta.pickupSeconds) : null;
+            const tripStr = eta ? formatTripEta(eta.tripSeconds) : null;
+
+            if (pickupStr || tripStr) {
+                return `
+                <div id="eta-block-${tripId}" class="mt-1.5 mb-1.5 p-2 rounded-lg bg-blue-950/40 border border-emerald-500/30 space-y-1">
+                    ${pickupStr ? `
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-[#92adc9] flex items-center gap-1 font-medium text-[11px]">
+                            <span class="material-symbols-outlined text-sm text-emerald-400">directions_car</span>
+                            Driver reaches you in
+                        </span>
+                        <span class="text-emerald-400 font-bold text-xs">${pickupStr}</span>
+                    </div>` : ''}
+                    ${tripStr ? `
+                    <div class="flex items-center justify-between text-[11px]">
+                        <span class="text-[#92adc9] flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm text-blue-400">schedule</span>
+                            Trip takes
+                        </span>
+                        <span class="text-blue-300 font-semibold">${tripStr}</span>
+                    </div>` : ''}
+                    <div class="flex items-center justify-between text-[9px] text-[#92adc9]/60 pt-0.5 border-t border-blue-500/10">
+                        <span class="flex items-center gap-1 text-emerald-400/90">
+                            <span class="size-1.5 rounded-full bg-emerald-400 animate-ping inline-block"></span> Live ETA
+                        </span>
+                        <span>estimate</span>
+                    </div>
+                </div>`;
+            }
+
+            // If ETA is still being computed right after driver accepts
+            return `
+            <div id="eta-block-${tripId}" class="mt-1.5 mb-1.5 p-2 rounded-lg bg-blue-950/30 border border-blue-500/20 space-y-0.5">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-[#92adc9] flex items-center gap-1 text-[11px]">
+                        <span class="material-symbols-outlined text-sm text-blue-400 animate-spin">sync</span>
+                        Driver accepted! Calculating arrival time...
+                    </span>
+                    <span class="text-blue-400 text-[10px] font-semibold animate-pulse">Live</span>
+                </div>
+            </div>`;
+        }
+
+        /**
+         * Update the ETA block in an already-rendered accepted-ride card.
+         * Called when an eta-update socket event arrives so the rider sees
+         * ETA without reloading the page.
+         * @param {string} tripId
+         * @param {number|null} pickupSeconds
+         * @param {number|null} tripSeconds
+         */
+        function updateRiderEtaDisplay(tripId, pickupSeconds, tripSeconds) {
+            console.log('[ETA] updateRiderEtaDisplay called for trip:', tripId, { pickupSeconds, tripSeconds });
+            const pickupStr = formatPickupEta(pickupSeconds);
+            const tripStr = formatTripEta(tripSeconds);
+
+            // Update in-memory acceptedRides cache
+            if (Array.isArray(acceptedRides)) {
+                const currentUserId = AuthService.getCurrentUser()?._id;
+                const trip = acceptedRides.find(t => t._id === tripId);
+                if (trip && trip.riders) {
+                    const rider = trip.riders.find(r => {
+                        const rId = r.riderId && r.riderId._id ? r.riderId._id : r.riderId;
+                        return rId === currentUserId || (typeof rId === 'object' && rId.toString() === currentUserId);
+                    });
+                    if (rider) {
+                        rider.eta = { pickupSeconds, tripSeconds, computedAt: new Date() };
+                    }
+                }
+            }
+
+            const block = document.getElementById('eta-block-' + tripId);
+            if (!block) {
+                // If block wasn't in DOM yet, reload accepted rides to render it
+                if (typeof loadAcceptedRides === 'function') {
+                    loadAcceptedRides();
+                }
+                return;
+            }
+
+            if (!pickupStr && !tripStr) {
+                block.style.display = 'none';
+                return;
+            }
+
+            block.style.display = '';
+            block.className = 'mt-1.5 mb-1.5 p-2 rounded-lg bg-blue-950/40 border border-emerald-500/30 space-y-1';
+            block.innerHTML = `
+                ${pickupStr ? `
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-[#92adc9] flex items-center gap-1 font-medium text-[11px]">
+                        <span class="material-symbols-outlined text-sm text-emerald-400">directions_car</span>
+                        Driver reaches you in
+                    </span>
+                    <span class="text-emerald-400 font-bold text-xs">${pickupStr}</span>
+                </div>` : ''}
+                ${tripStr ? `
+                <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-[#92adc9] flex items-center gap-1">
+                        <span class="material-symbols-outlined text-sm text-blue-400">schedule</span>
+                        Trip takes
+                    </span>
+                    <span class="text-blue-300 font-semibold">${tripStr}</span>
+                </div>` : ''}
+                <div class="flex items-center justify-between text-[9px] text-[#92adc9]/60 pt-0.5 border-t border-blue-500/10">
+                    <span class="flex items-center gap-1 text-emerald-400/90">
+                        <span class="size-1.5 rounded-full bg-emerald-400 animate-ping inline-block"></span> Live ETA
+                    </span>
+                    <span>estimate</span>
+                </div>`;
+        }
+
+        // ── Socket.io setup for real-time updates ──────────────────────────────
+        function setupSocketListeners() {
+            // Connect to Socket.io server
+            const token = apiClient.getToken();
+            const socket = io(SOCKET_SERVER_URL, {
+                auth: {
+                    token: token
+                }
+            });
+
+            // Store socket globally so it can be accessed by other functions (like live tracking)
+            window.riderSocket = socket;
+
+            // Join user room for personal notifications (for trip-completed events)
+            const user = AuthService.getCurrentUser();
+            if (user && user._id) {
+                socket.emit('join-user-room', { userId: user._id });
+                console.log('[DEBUG] Joined user room:', user._id);
+            }
+
+            // Listen for ride acceptance notifications
+            socket.on('notification', async (data) => {
+                console.log('Notification received:', data);
+                if (data.type === 'ride-accepted') {
+                    showNotification('✓ ' + data.message, 'success');
+                    // Reload accepted rides
+                    await loadAcceptedRides();
+                    // Switch to My Trips tab so passenger immediately sees the accepted card
+                    if (typeof switchTab === 'function') {
+                        switchTab('mytrips');
+                    }
+                    // Remove from available rides if showing
+                    const rideCard = document.querySelector(`[data-ride-id="${data.tripId}"]`);
+                    if (rideCard) {
+                        rideCard.remove();
+                    }
+                } else if (data.type === 'ride-rejected') {
+                    showNotification('❌ ' + data.message, 'error');
+                    // Remove from available rides if showing
+                    const rideCard = document.querySelector(`[data-ride-id="${data.tripId}"]`);
+                    if (rideCard) {
+                        rideCard.remove();
+                    }
+                    // Remove from accepted rides if showing
+                    await loadAcceptedRides();
+                } else if (data.type === 'new-message') {
+                    // Only show notification if chat with this trip is NOT currently open
+                    if (!window.currentMessagingTrip || String(window.currentMessagingTrip) !== String(data.tripId)) {
+                        showNotification(`📨 New message from ${data.senderName}`, 'info');
+                    }
+                    // If conversation is open, refresh messages silently
+                    if (window.currentMessagingTrip && (!data.tripId || String(data.tripId) === String(window.currentMessagingTrip))) {
+                        await loadMessageHistory(window.currentMessagingTrip);
+                    }
+                }
+            });
+
+            // Listen for trip completion
+            socket.on('trip-completed', async (data) => {
+                console.log('Trip completed event received:', data);
+                showNotification('✓ Trip completed by driver', 'success');
+                // Refresh accepted rides to remove completed trip
+                await loadAcceptedRides();
+            });
+
+            // Listen for new messages in real-time
+            socket.on('new-message', async (data) => {
+                console.log('New message received:', data);
+                // If the message is for the current open conversation, refresh messages
+                if (window.currentMessagingTrip && (!data.tripId || String(data.tripId) === String(window.currentMessagingTrip))) {
+                    await loadMessageHistory(window.currentMessagingTrip);
+                }
+            });
+
+            // Listen for AI moderation warning (flagged toxic message)
+            socket.on('moderation-warning', (data) => {
+                console.log('[MODERATION] Warning received on rider socket:', data);
+                showModerationWarning(data);
+            });
+
+            // Listen for message-flagged event to display small red flag badge
+            socket.on('message-flagged', (data) => {
+                console.log('[MODERATION] Message flagged event received:', data);
+                if (data && data.messageId) {
+                    applyFlagToBubble(data.messageId);
+                }
+            });
+
+            // Listen for driver location updates (real-time)
+            socket.on('driver-location-update', (data) => {
+                console.log('[LOCATION] ✅ Driver location update received from socket.io:', data);
+                // data format: { tripId, driverId, lat, lng, timestamp }
+                if (!window.driverLocations) {
+                    window.driverLocations = {};
+                }
+                // Store driver location indexed by tripId
+                window.driverLocations[data.tripId] = {
+                    lat: data.lat,
+                    lng: data.lng,
+                    timestamp: data.timestamp
+                };
+                console.log('[LOCATION] Stored in window.driverLocations:', window.driverLocations[data.tripId]);
+
+                // Update pickup distances for displayed rides
+                updatePickupDistances(window.driverLocations);
+            });
+
+            // Listen for ETA updates sent after driver accepts a rider
+            socket.on('eta-update', (data) => {
+                console.log('[ETA] Received eta-update:', data);
+                // data: { tripId, riderId, pickupSeconds, tripSeconds, pickupSource, tripSource, computedAt }
+                if (data && data.tripId) {
+                    // Update the card if it is currently visible on screen
+                    updateRiderEtaDisplay(data.tripId, data.pickupSeconds, data.tripSeconds);
+                }
+            });
+
+            socket.on('connect', () => {
+                console.log('[SOCKET] ✅ Socket.io connected with ID:', socket.id);
+            });
+
+            socket.on('disconnect', () => {
+                console.log('[SOCKET] ⚠️ Socket.io disconnected');
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('[SOCKET] ❌ Socket.io connection error:', error);
+            });
+
+            // Test: Request location update on connection
+            socket.on('connect', () => {
+                console.log('[SOCKET] Requesting initial driver location broadcasts...');
+                socket.emit('request-location-update');
+            });
+        }
+
+        // Initialize Socket.io on page load
+        window.addEventListener('load', () => {
+            // Check if Socket.io library is available
+            if (typeof io !== 'undefined') {
+                setupSocketListeners();
+            } else {
+                console.warn('Socket.io library not loaded, real-time updates disabled');
+            }
+        });
+
+        // Mobile view & map switching (Apple Design Principles)
+        let currentMobileView = 'dashboard';
+        let isTogglingMobileView = false;
+
+        function setMobileView(view) {
+            currentMobileView = view;
+            const isMobile = window.innerWidth <= 768;
+            const mapContainer = document.getElementById('mapContainer');
+            const sidebarContainer = document.getElementById('sidebarContainer');
+            const toggleMapBtn = document.getElementById('toggleMapBtn');
+            const closeBtn = document.getElementById('closeMapBtn');
+
+            if (!isMobile) {
+                if (mapContainer) {
+                    mapContainer.classList.remove('show');
+                    mapContainer.style.display = '';
+                }
+                if (sidebarContainer) {
+                    sidebarContainer.classList.remove('hide-on-mobile');
+                    sidebarContainer.style.display = '';
+                }
+                if (closeBtn) closeBtn.classList.add('hidden');
+                if (toggleMapBtn) toggleMapBtn.style.display = 'none';
+                return;
+            }
+
+            if (toggleMapBtn) toggleMapBtn.style.display = 'inline-flex';
+
+            if (view === 'map') {
+                if (sidebarContainer) {
+                    sidebarContainer.classList.add('hide-on-mobile');
+                    sidebarContainer.style.display = 'none';
+                }
+                if (mapContainer) {
+                    mapContainer.classList.add('show');
+                    mapContainer.style.display = 'flex';
+                }
+                if (toggleMapBtn) {
+                    toggleMapBtn.innerHTML = '<span class="material-symbols-outlined text-[19px] pointer-events-none">arrow_back</span>';
+                    toggleMapBtn.title = 'Back to Dashboard';
+                    toggleMapBtn.setAttribute('aria-label', 'Back to Dashboard');
+                    toggleMapBtn.classList.add('bg-primary', 'text-white', 'border-primary');
+                    toggleMapBtn.classList.remove('bg-white/5', 'hover:bg-white/10');
+                }
+                if (closeBtn) closeBtn.classList.remove('hidden');
+
+                const dismissSkeletonAndResize = () => {
+                    const skel = document.getElementById('mapSkeleton');
+                    if (skel) skel.remove();
+
+                    const mapInstance = (typeof dashboardMap !== 'undefined' && dashboardMap && typeof dashboardMap.invalidateSize === 'function')
+                        ? dashboardMap
+                        : (window.dashboardMapInstance && typeof window.dashboardMapInstance.invalidateSize === 'function' ? window.dashboardMapInstance : null);
+
+                    if (mapInstance) {
+                        mapInstance.invalidateSize({ pan: false });
+                        const safeLoc = (typeof getSafeMapCenter === 'function') ? getSafeMapCenter() : { lat: 28.6139, lng: 77.2090 };
+                        if (mapInstance.getCenter && (mapInstance.getCenter().lat === 0 || isNaN(mapInstance.getCenter().lat))) {
+                            mapInstance.setView([safeLoc.lat, safeLoc.lng], 15);
+                        }
+                    } else if (typeof initializeMap === 'function') {
+                        initializeMap();
+                    }
+                };
+
+                requestAnimationFrame(dismissSkeletonAndResize);
+                setTimeout(dismissSkeletonAndResize, 50);
+                setTimeout(dismissSkeletonAndResize, 150);
+                setTimeout(dismissSkeletonAndResize, 400);
+            } else {
+                // Dashboard view
+                if (mapContainer) {
+                    mapContainer.classList.remove('show');
+                    mapContainer.style.display = 'none';
+                }
+                if (sidebarContainer) {
+                    sidebarContainer.classList.remove('hide-on-mobile');
+                    sidebarContainer.style.display = 'flex';
+                }
+                if (toggleMapBtn) {
+                    toggleMapBtn.innerHTML = '<span class="material-symbols-outlined text-[19px] pointer-events-none">map</span>';
+                    toggleMapBtn.title = 'View Map';
+                    toggleMapBtn.setAttribute('aria-label', 'View Map');
+                    toggleMapBtn.classList.remove('bg-primary', 'text-white', 'border-primary');
+                    toggleMapBtn.classList.add('bg-white/5', 'hover:bg-white/10');
+                }
+                if (closeBtn) closeBtn.classList.add('hidden');
+            }
+        }
+
+        function toggleMapView(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            if (isTogglingMobileView) return;
+            isTogglingMobileView = true;
+            setTimeout(() => { isTogglingMobileView = false; }, 250);
+
+            const nextView = (currentMobileView === 'map') ? 'dashboard' : 'map';
+            setMobileView(nextView);
+        }
+
+        function closeMapView(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            setMobileView('dashboard');
+        }
+
+        window.setMobileView = setMobileView;
+        window.toggleMapView = toggleMapView;
+        window.closeMapView = closeMapView;
+
+        // Ensure proper view on resize and page load
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                setMobileView('desktop');
+            } else {
+                const mapContainer = document.getElementById('mapContainer');
+                const isMapShowing = mapContainer && mapContainer.classList.contains('show');
+                setMobileView(isMapShowing ? 'map' : 'dashboard');
+            }
+        });
+
+        // Initialize mobile state on dashboard start
+        document.addEventListener('DOMContentLoaded', () => {
+            const closeMapBtn = document.getElementById('closeMapBtn');
+            if (closeMapBtn) {
+                closeMapBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    closeMapView(e);
+                });
+            }
+
+            if (window.innerWidth <= 768) {
+                setMobileView('dashboard');
+            }
+        });
+    </script>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- REVIEW POPUP MODAL                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="reviewModal" class="fixed inset-0 z-[9999] flex items-center justify-center p-4 hidden" role="dialog"
+        aria-modal="true" aria-labelledby="reviewModalTitle">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="ReviewManager.skip()"></div>
+
+        <!-- Card -->
+        <div
+            class="relative z-10 w-full max-w-sm bg-gradient-to-b from-[#192633] to-[#111a22] rounded-2xl border border-[#233648] shadow-2xl overflow-hidden">
+
+            <!-- Accent top bar -->
+            <div class="h-1 w-full bg-gradient-to-r from-primary via-purple-500 to-secondary"></div>
+
+            <!-- Body -->
+            <div class="p-6">
+                <h2 id="reviewModalTitle" class="text-lg font-bold text-white mb-1">Rate your driver</h2>
+                <p class="text-xs text-[#92adc9] mb-5">How was your experience?</p>
+
+                <!-- Driver info -->
+                <div id="reviewDriverInfo" class="flex items-center gap-3 mb-5 bg-[#233648]/60 rounded-xl p-3">
+                    <div id="reviewDriverAvatar"
+                        class="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                    </div>
+                    <div>
+                        <p id="reviewDriverName" class="text-white font-bold text-sm"></p>
+                        <p id="reviewDriverRating" class="text-[#92adc9] text-xs mt-0.5"></p>
+                    </div>
+                </div>
+
+                <!-- Star selector -->
+                <div class="flex justify-center gap-2 mb-5" id="starContainer" role="group" aria-label="Star rating">
+                    <!-- stars injected by JS -->
+                </div>
+
+                <!-- Comment -->
+                <textarea id="reviewComment"
+                    class="w-full bg-[#233648] text-white text-sm rounded-xl p-3 resize-none border border-[#2d465e] focus:border-primary focus:outline-none placeholder-[#4a6070] transition-colors"
+                    rows="3" maxlength="300" placeholder="Optional — any comments? (max 300 chars)"
+                    aria-label="Optional comment"></textarea>
+                <p class="text-right text-[10px] text-[#4a6070] mt-1"><span id="reviewCharCount">0</span>/300</p>
+
+                <!-- Actions -->
+                <div class="flex gap-3 mt-4">
+                    <button id="reviewSkipBtn" onclick="ReviewManager.skip()"
+                        class="flex-1 py-2.5 rounded-xl bg-[#233648] hover:bg-[#2d465e] text-[#92adc9] text-sm font-bold transition-all">Skip</button>
+                    <button id="reviewSubmitBtn" onclick="ReviewManager.submit()" disabled
+                        class="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold transition-all opacity-40 cursor-not-allowed">Submit</button>
+                </div>
+
+                <!-- Success state (hidden until submit) -->
+                <div id="reviewSuccess" class="hidden text-center py-4">
+                    <div class="text-4xl mb-2">🎉</div>
+                    <p class="text-white font-bold">Thanks for your feedback!</p>
+                    <p class="text-xs text-[#92adc9] mt-1">Your review helps keep QuickPull great.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ════════════════════════════════════════════════════════════════════════
+        // ReviewManager — handles the review popup lifecycle
+        // ════════════════════════════════════════════════════════════════════════
+        const ReviewManager = (() => {
+            let _queue = [];  // array of pending review objects
+            let _current = null;
+            let _selectedRating = 0;
+
+            // ── Build star selector ──────────────────────────────────────────────
+            function _buildStars() {
+                const container = document.getElementById('starContainer');
+                container.innerHTML = '';
+                for (let i = 1; i <= 5; i++) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.dataset.star = i;
+                    btn.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+                    btn.className = 'text-4xl transition-transform duration-100 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded select-none';
+                    btn.textContent = '☆';
+                    btn.addEventListener('click', () => _selectStar(i));
+                    btn.addEventListener('mouseenter', () => _highlightStars(i));
+                    container.appendChild(btn);
+                }
+                container.addEventListener('mouseleave', () => _highlightStars(_selectedRating));
+            }
+
+            function _highlightStars(n) {
+                document.querySelectorAll('#starContainer button').forEach((btn, idx) => {
+                    btn.textContent = idx < n ? '★' : '☆';
+                    btn.style.color = idx < n ? '#facc15' : '#4a6070';
+                });
+            }
+
+            function _selectStar(n) {
+                _selectedRating = n;
+                _highlightStars(n);
+                const submitBtn = document.getElementById('reviewSubmitBtn');
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+            }
+
+            // ── Populate modal with driver info ──────────────────────────────────
+            function _populate(review) {
+                const d = review.driver || {};
+                const initials = ((d.firstName || '?')[0] + (d.lastName || '?')[0]).toUpperCase();
+                document.getElementById('reviewDriverAvatar').textContent = initials;
+                document.getElementById('reviewDriverName').textContent =
+                    d.firstName ? `${d.firstName} ${d.lastName}` : 'Your driver';
+
+                const ratingEl = document.getElementById('reviewDriverRating');
+                if (d.score10) {
+                    ratingEl.textContent = `⭐ ${d.score10}/10 · ${d.ratingCount || 0} review${d.ratingCount !== 1 ? 's' : ''}`;
+                } else {
+                    ratingEl.textContent = '✨ New driver';
+                }
+            }
+
+            // ── Show the modal for the first item in the queue ───────────────────
+            function _showNext() {
+                if (_queue.length === 0) return;
+                _current = _queue[0];
+                _selectedRating = 0;
+
+                // Reset UI
+                document.getElementById('reviewComment').value = '';
+                document.getElementById('reviewCharCount').textContent = '0';
+                document.getElementById('reviewSuccess').classList.add('hidden');
+                document.getElementById('reviewSubmitBtn').disabled = true;
+                document.getElementById('reviewSubmitBtn').classList.add('opacity-40', 'cursor-not-allowed');
+                document.getElementById('reviewSkipBtn').classList.remove('hidden');
+                document.getElementById('reviewSubmitBtn').classList.remove('hidden');
+
+                _buildStars();
+                _populate(_current);
+                document.getElementById('reviewModal').classList.remove('hidden');
+            }
+
+            function _close() {
+                document.getElementById('reviewModal').classList.add('hidden');
+                _current = null;
+                _selectedRating = 0;
+                // If there are more queued, show next after a short pause
+                if (_queue.length > 0) {
+                    setTimeout(_showNext, 600);
+                }
+            }
+
+            // ── Public API ───────────────────────────────────────────────────────
+            return {
+                // Add a pending review to the queue (from socket event OR from API poll)
+                enqueue(review) {
+                    // Avoid duplicates in queue
+                    const alreadyQueued = _queue.some(r => r.bookingId === review.bookingId || r.tripId === review.tripId);
+                    if (alreadyQueued) return;
+                    _queue.push(review);
+                    if (_queue.length === 1) _showNext(); // auto-show if queue was empty
+                },
+
+                async skip() {
+                    if (!_current) { _close(); return; }
+                    const bookingId = _current.bookingId || _current.tripId;
+                    _queue.shift();
+                    try {
+                        await TripServiceAPI.skipReview(bookingId);
+                    } catch (e) { console.warn('[REVIEW] skip error (non-fatal):', e.message); }
+                    _close();
+                },
+
+                async submit() {
+                    if (!_current || _selectedRating === 0) return;
+                    const bookingId = _current.bookingId || _current.tripId;
+                    const comment = document.getElementById('reviewComment').value.trim();
+                    const submitBtn = document.getElementById('reviewSubmitBtn');
+                    const skipBtn = document.getElementById('reviewSkipBtn');
+
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Submitting…';
+
+                    try {
+                        const res = await TripServiceAPI.submitReview(bookingId, _selectedRating, comment);
+                        if (res && res.success) {
+                            _queue.shift();
+                            // Show success briefly
+                            document.getElementById('reviewSuccess').classList.remove('hidden');
+                            submitBtn.classList.add('hidden');
+                            skipBtn.classList.add('hidden');
+                            setTimeout(() => _close(), 2000);
+                        } else {
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = 'Submit';
+                            if (typeof showNotification === 'function') {
+                                showNotification(res && res.message ? res.message : 'Error submitting review', 'error');
+                            }
+                        }
+                    } catch (err) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit';
+                        const msg = err && err.message ? err.message : 'Error submitting review';
+                        if (typeof showNotification === 'function') showNotification(msg, 'error');
+                    }
+                },
+
+                // Fetch pending reviews from server and queue them (used on page load / reconnect)
+                async checkPending() {
+                    try {
+                        const res = await TripServiceAPI.getPendingReviews();
+                        if (res && res.pending && res.pending.length > 0) {
+                            console.log('[REVIEW] Found', res.pending.length, 'pending review(s) from server');
+                            res.pending.forEach(r => this.enqueue(r));
+                        }
+                    } catch (e) {
+                        console.warn('[REVIEW] checkPending error (non-fatal):', e.message);
+                    }
+                }
+            };
+        })();
+
+        // Character counter for comment textarea
+        document.getElementById('reviewComment').addEventListener('input', function () {
+            document.getElementById('reviewCharCount').textContent = this.value.length;
+        });
+
+        // Hook into the existing socket setup — listen for review popup events
+        const _origSetup = typeof setupSocketListeners === 'function' ? setupSocketListeners : null;
+        // We patch the socket AFTER it's created (when window.riderSocket is available)
+        function _attachReviewSocketListener(socket) {
+            if (!socket) return;
+            socket.on('show-review-popup', (data) => {
+                console.log('[REVIEW] Received show-review-popup event:', data);
+                ReviewManager.enqueue(data);
+            });
+            // Re-check pending on reconnect (handles offline case)
+            socket.on('connect', () => {
+                setTimeout(() => ReviewManager.checkPending(), 1500);
+            });
+        }
+
+        // Wait for socket to be ready, then attach listener
+        (function _waitForSocket() {
+            if (window.riderSocket) {
+                _attachReviewSocketListener(window.riderSocket);
+            } else {
+                setTimeout(_waitForSocket, 300);
+            }
+        })();
+
+        // On page load, check for pending reviews (handles offline/refresh scenario)
+        window.addEventListener('load', async () => {
+            // Small delay to let auth + socket settle
+            setTimeout(() => ReviewManager.checkPending(), 2500);
+        });
+
+        // Register service worker for instant tile caching on HTTP/HTTPS
+        if (window.location.protocol.startsWith('http') && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => { });
+        }
+    </script>
+
+</body>
+
+</html>
